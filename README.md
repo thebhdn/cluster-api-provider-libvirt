@@ -1,8 +1,8 @@
 # cluster-api-provider-libvirt
-// TODO(user): Add simple overview of use/purpose
+CAPI infra provider for libvirt PoC
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+CAPI infrastructure provider for libvirt
 
 ## Getting Started
 
