@@ -18,42 +18,28 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // LibvirtClusterSpec defines the desired state of LibvirtCluster
 type LibvirtClusterSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
-	// foo is an example field of LibvirtCluster. Edit libvirtcluster_types.go to remove/update
+	// URI is the libvirt connection URI
+	// Example: qemu+ssh://root@192.168.1.15/system
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	URI string `json:"uri,omitempty"`
+
+	// ControlPlaneEndpoint is the endpoint used to reach the workload cluster API server
+	// +optional
+	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 }
 
-// LibvirtClusterStatus defines the observed state of LibvirtCluster.
+// LibvirtClusterStatus defines the observed state of LibvirtCluster
 type LibvirtClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Ready indicates the cluster-level infrastructure is ready
+	// +optional
+	Ready bool `json:"ready,omitempty"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the LibvirtCluster resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
-	// +listType=map
-	// +listMapKey=type
+	// Conditions represent the latest available observations of the LibvirtCluster state
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
