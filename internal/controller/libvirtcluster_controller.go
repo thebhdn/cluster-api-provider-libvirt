@@ -19,12 +19,16 @@ package controller
 import (
 	"context"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // LibvirtClusterReconciler reconciles a LibvirtCluster object
@@ -37,27 +41,54 @@ type LibvirtClusterReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtclusters/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the LibvirtCluster object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/reconcile
 func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling libvirt-cluster", "cluster-name", req.Name, "cluster-namespace", req.Namespace)
 
-	// TODO(user): your logic here
+	cluster := &infrav1.LibvirtCluster{}
 
-	return ctrl.Result{}, nil
+	err := r.Get(ctx, req.NamespacedName, cluster)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			logger.Info("cluster not found", "cluster-name", req.Name, "cluster-namespace", req.Namespace)
+
+			return ctrl.Result{}, nil
+		}
+
+		logger.Error(err, "Error happened when getting libvirt-cluster",
+			"cluster-name", req.Name,
+			"cluster-namespace", req.Namespace)
+
+		return ctrl.Result{}, err
+	}
+
+	if !controllerutil.ContainsFinalizer(cluster, infrav1.LibvirtClusterFinalizer) {
+		controllerutil.AddFinalizer(cluster, infrav1.LibvirtClusterFinalizer)
+		return ctrl.Result{}, r.Update(ctx, cluster)
+	}
+
+	if !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
+		controllerutil.RemoveFinalizer(cluster, infrav1.LibvirtClusterFinalizer)
+		return ctrl.Result{}, r.Update(ctx, cluster)
+	}
+
+	cluster.Status.Ready = true
+
+	meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{
+		Type:               infrav1.ReadyCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             "LibvirtInfrastructureReady",
+		Message:            "Libvirt cluster infrastructure is ready",
+		ObservedGeneration: cluster.Generation,
+	})
+
+	return ctrl.Result{}, r.Status().Update(ctx, cluster)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *LibvirtClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&infrastructurev1alpha1.LibvirtCluster{}).
+		For(&infrav1.LibvirtCluster{}).
 		Named("libvirtcluster").
 		Complete(r)
 }

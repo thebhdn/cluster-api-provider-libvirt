@@ -18,13 +18,18 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 )
 
 // LibvirtMachineReconciler reconciles a LibvirtMachine object
@@ -37,27 +42,60 @@ type LibvirtMachineReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the LibvirtMachine object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/reconcile
 func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling libvirt machine")
 
-	// TODO(user): your logic here
+	machine := &infrav1.LibvirtMachine{}
 
-	return ctrl.Result{}, nil
+	err := r.Get(ctx, req.NamespacedName, machine)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			logger.Info("harvestermachine not found")
+
+			return ctrl.Result{}, nil
+		}
+
+		logger.Error(err, "Error happened when getting harvestermachine")
+
+		return ctrl.Result{}, err
+	}
+
+	if !controllerutil.ContainsFinalizer(machine, infrav1.LibvirtMachineFinalizer) {
+		controllerutil.AddFinalizer(machine, infrav1.LibvirtMachineFinalizer)
+		return ctrl.Result{}, r.Update(ctx, machine)
+	}
+
+	if !machine.ObjectMeta.DeletionTimestamp.IsZero() {
+		controllerutil.RemoveFinalizer(machine, infrav1.LibvirtMachineFinalizer)
+		return ctrl.Result{}, r.Update(ctx, machine)
+	}
+
+	if machine.Spec.ProviderID == nil {
+		providerID := fmt.Sprintf("libvirt://%s/%s", machine.Namespace, machine.Name)
+		machine.Spec.ProviderID = &providerID
+		if err := r.Update(ctx, machine); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	machine.Status.Ready = true
+
+	meta.SetStatusCondition(&machine.Status.Conditions, metav1.Condition{
+		Type:               infrav1.ReadyCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             "LibvirtMachineReady",
+		Message:            "Libvirt machine infrastructure is ready",
+		ObservedGeneration: machine.Generation,
+	})
+
+	return ctrl.Result{}, r.Status().Update(ctx, machine)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *LibvirtMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&infrastructurev1alpha1.LibvirtMachine{}).
+		For(&infrav1.LibvirtMachine{}).
 		Named("libvirtmachine").
 		Complete(r)
 }
