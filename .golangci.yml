@@ -24,6 +24,10 @@ linters:
     - unused
     - logcheck
   settings:
+    staticcheck:
+      checks:
+        - all
+        - "-QF1008"
     custom:
       logcheck:
         type: "module"
