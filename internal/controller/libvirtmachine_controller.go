@@ -41,14 +41,15 @@ type LibvirtMachineReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines;machines/status,verbs=get;list;watch
 
 func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling libvirt machine")
 
-	machine := &infrav1.LibvirtMachine{}
+	libvirtMachine := &infrav1.LibvirtMachine{}
 
-	err := r.Get(ctx, req.NamespacedName, machine)
+	err := r.Get(ctx, req.NamespacedName, libvirtMachine)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("harvestermachine not found")
@@ -61,35 +62,35 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	if !controllerutil.ContainsFinalizer(machine, infrav1.LibvirtMachineFinalizer) {
-		controllerutil.AddFinalizer(machine, infrav1.LibvirtMachineFinalizer)
-		return ctrl.Result{}, r.Update(ctx, machine)
+	if !controllerutil.ContainsFinalizer(libvirtMachine, infrav1.LibvirtMachineFinalizer) {
+		controllerutil.AddFinalizer(libvirtMachine, infrav1.LibvirtMachineFinalizer)
+		return ctrl.Result{}, r.Update(ctx, libvirtMachine)
 	}
 
-	if !machine.ObjectMeta.DeletionTimestamp.IsZero() {
-		controllerutil.RemoveFinalizer(machine, infrav1.LibvirtMachineFinalizer)
-		return ctrl.Result{}, r.Update(ctx, machine)
+	if !libvirtMachine.ObjectMeta.DeletionTimestamp.IsZero() {
+		controllerutil.RemoveFinalizer(libvirtMachine, infrav1.LibvirtMachineFinalizer)
+		return ctrl.Result{}, r.Update(ctx, libvirtMachine)
 	}
 
-	if machine.Spec.ProviderID == nil {
-		providerID := fmt.Sprintf("libvirt://%s/%s", machine.Namespace, machine.Name)
-		machine.Spec.ProviderID = &providerID
-		if err := r.Update(ctx, machine); err != nil {
+	if libvirtMachine.Spec.ProviderID == nil {
+		providerID := fmt.Sprintf("libvirt://%s/%s", libvirtMachine.Namespace, libvirtMachine.Name)
+		libvirtMachine.Spec.ProviderID = &providerID
+		if err := r.Update(ctx, libvirtMachine); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	machine.Status.Ready = true
+	libvirtMachine.Status.Ready = true
 
-	meta.SetStatusCondition(&machine.Status.Conditions, metav1.Condition{
+	meta.SetStatusCondition(&libvirtMachine.Status.Conditions, metav1.Condition{
 		Type:               infrav1.ReadyCondition,
 		Status:             metav1.ConditionTrue,
 		Reason:             "LibvirtMachineReady",
 		Message:            "Libvirt machine infrastructure is ready",
-		ObservedGeneration: machine.Generation,
+		ObservedGeneration: libvirtMachine.Generation,
 	})
 
-	return ctrl.Result{}, r.Status().Update(ctx, machine)
+	return ctrl.Result{}, r.Status().Update(ctx, libvirtMachine)
 }
 
 // SetupWithManager sets up the controller with the Manager.
