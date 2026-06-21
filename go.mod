@@ -4,10 +4,12 @@ go 1.25.7
 
 require (
 	github.com/diskfs/go-diskfs v1.9.3
+	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	k8s.io/apimachinery v0.35.4
 	k8s.io/client-go v0.35.4
+	libvirt.org/go/libvirt v1.12003.0
 	libvirt.org/go/libvirtxml v1.12002.0
 	sigs.k8s.io/cluster-api v1.13.2
 	sigs.k8s.io/controller-runtime v0.23.3
@@ -30,7 +32,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
