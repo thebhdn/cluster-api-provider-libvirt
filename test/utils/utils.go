@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright 2026 Bohdan Leshchenko.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -218,7 +218,7 @@ func UncommentCode(filename, target, prefix string) error {
 
 	// false positive
 	// nolint:gosec
-	if err = os.WriteFile(filename, out.Bytes(), 0644); err != nil {
+	if err = os.WriteFile(filename, out.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write file %q: %w", filename, err)
 	}
 
