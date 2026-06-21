@@ -18,6 +18,12 @@ package builders
 
 import libvirtxml "libvirt.org/go/libvirtxml"
 
+const (
+	DefaultVolumeCapacityGiB  = uint64(20)
+	DefaultVolumeCapacityUnit = "G"
+	DefaultVolumeFormat       = "qcow2"
+)
+
 type VolumeBuilder struct {
 	volume *libvirtxml.StorageVolume
 }
@@ -45,12 +51,6 @@ func (b *VolumeBuilder) WithCapacityGiB(size uint64) *VolumeBuilder {
 	return b
 }
 
-func (b *VolumeBuilder) WithCapacity(size uint64, unit string) *VolumeBuilder {
-	b.volume.Capacity.Value = size
-	b.volume.Capacity.Unit = unit
-	return b
-}
-
 func (b *VolumeBuilder) WithFormat(format string) *VolumeBuilder {
 	if format == "" {
 		format = DefaultVolumeFormat
@@ -60,8 +60,18 @@ func (b *VolumeBuilder) WithFormat(format string) *VolumeBuilder {
 	return b
 }
 
-func (b *VolumeBuilder) WithPath(path string) *VolumeBuilder {
-	b.volume.Target.Path = path
+func (b *VolumeBuilder) WithBackingStore(path, format string) *VolumeBuilder {
+	if format == "" {
+		format = DefaultVolumeFormat
+	}
+
+	b.volume.BackingStore = &libvirtxml.StorageVolumeBackingStore{
+		Path: path,
+		Format: &libvirtxml.StorageVolumeTargetFormat{
+			Type: format,
+		},
+	}
+
 	return b
 }
 

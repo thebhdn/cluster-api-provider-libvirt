@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package libvirt
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	diskfs "github.com/diskfs/go-diskfs"
+	"github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
@@ -29,57 +29,70 @@ import (
 
 const (
 	isoFileType      = ".iso"
-	usrDataFileName  = "user-data"
+	userDataFileName = "user-data"
 	metaDataFileName = "meta-data"
 	isoLabel         = "cidata"
 )
 
-func createIso(isoName, userData, metaData string) (string, error) {
-	path := filepath.Join(os.TempDir(), isoName+isoFileType)
+func (s *Scope) createCloudInitISO(userData string) (string, error) {
+	path := filepath.Join(os.TempDir(), s.vmName()+isoFileType)
 
-	var diskSize int64 = 10 * 1024 * 1024 // 10 MB
+	const diskSize int64 = 10 * 1024 * 1024
+
 	mydisk, err := diskfs.Create(path, diskSize, diskfs.SectorSizeDefault)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create ISO disk: %w", err)
 	}
 
-	// the following line is required for an ISO, which may have logical block sizes
-	// only of 2048, 4096, 8192
 	mydisk.LogicalBlocksize = 2048
-	fspec := disk.FilesystemSpec{Partition: 0, FSType: filesystem.TypeISO9660}
-	fs, err := mydisk.CreateFilesystem(fspec)
+
+	fs, err := mydisk.CreateFilesystem(disk.FilesystemSpec{
+		Partition: 0,
+		FSType:    filesystem.TypeISO9660,
+	})
 	if err != nil {
+		return "", fmt.Errorf("create ISO filesystem: %w", err)
+	}
+
+	userFile, err := fs.OpenFile(userDataFileName, os.O_CREATE|os.O_RDWR)
+	if err != nil {
+		_ = fs.Close()
 		return "", err
 	}
 
-	defer func() {
-		closeErr := fs.Close()
-		if err == nil && closeErr != nil {
-			err = closeErr
-		}
-	}()
-
-	usr, err := fs.OpenFile(usrDataFileName, os.O_CREATE|os.O_RDWR)
-	if err != nil {
+	if _, err := userFile.Write([]byte(userData)); err != nil {
+		_ = fs.Close()
 		return "", err
 	}
-	_, err = usr.Write([]byte(userData))
 
-	meta, err := fs.OpenFile(metaDataFileName, os.O_CREATE|os.O_RDWR)
+	metaFile, err := fs.OpenFile(metaDataFileName, os.O_CREATE|os.O_RDWR)
 	if err != nil {
+		_ = fs.Close()
 		return "", err
 	}
-	_, err = meta.Write([]byte(metaData))
+
+	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", s.vmName(), s.vmName())
+
+	if _, err := metaFile.Write([]byte(metaData)); err != nil {
+		_ = fs.Close()
+		return "", err
+	}
 
 	iso, ok := fs.(*iso9660.FileSystem)
 	if !ok {
+		_ = fs.Close()
 		return "", fmt.Errorf("not an iso9660 filesystem")
 	}
-	err = iso.Finalize(iso9660.FinalizeOptions{
+
+	if err := iso.Finalize(iso9660.FinalizeOptions{
 		VolumeIdentifier: isoLabel,
 		RockRidge:        true,
-	})
-	if err != nil {
+	}); err != nil {
+		_ = fs.Close()
+		return "", err
+	}
+
+	if err := fs.Close(); err != nil {
 		return "", err
 	}
 
