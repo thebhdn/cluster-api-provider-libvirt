@@ -54,33 +54,26 @@ func (s *Scope) createCloudInitISO(userData string) (string, error) {
 		return "", fmt.Errorf("create ISO filesystem: %w", err)
 	}
 
-	userFile, err := fs.OpenFile(userDataFileName, os.O_CREATE|os.O_RDWR)
-	if err != nil {
+	defer func() {
 		_ = fs.Close()
-		return "", err
+	}()
+
+	if err := writeISOFile(fs, userDataFileName, []byte(userData)); err != nil {
+		return "", fmt.Errorf("failed to add cloud-init user-data: %w", err)
 	}
 
-	if _, err := userFile.Write([]byte(userData)); err != nil {
-		_ = fs.Close()
-		return "", err
-	}
+	metaData := fmt.Sprintf(
+		"instance-id: %s\nlocal-hostname: %s\n",
+		s.vmName(),
+		s.vmName(),
+	)
 
-	metaFile, err := fs.OpenFile(metaDataFileName, os.O_CREATE|os.O_RDWR)
-	if err != nil {
-		_ = fs.Close()
-		return "", err
-	}
-
-	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", s.vmName(), s.vmName())
-
-	if _, err := metaFile.Write([]byte(metaData)); err != nil {
-		_ = fs.Close()
-		return "", err
+	if err := writeISOFile(fs, metaDataFileName, []byte(metaData)); err != nil {
+		return "", fmt.Errorf("failed to add cloud-init meta-data: %w", err)
 	}
 
 	iso, ok := fs.(*iso9660.FileSystem)
 	if !ok {
-		_ = fs.Close()
 		return "", fmt.Errorf("not an iso9660 filesystem")
 	}
 
@@ -88,13 +81,21 @@ func (s *Scope) createCloudInitISO(userData string) (string, error) {
 		VolumeIdentifier: isoLabel,
 		RockRidge:        true,
 	}); err != nil {
-		_ = fs.Close()
-		return "", err
-	}
-
-	if err := fs.Close(); err != nil {
-		return "", err
+		return "", fmt.Errorf("finalize ISO: %w", err)
 	}
 
 	return path, nil
+}
+
+func writeISOFile(fs filesystem.FileSystem, name string, data []byte) error {
+	file, err := fs.OpenFile(name, os.O_CREATE|os.O_RDWR)
+	if err != nil {
+		return err
+	}
+
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+
+	return nil
 }
