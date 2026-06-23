@@ -26,7 +26,7 @@ import (
 	libvirtClient "libvirt.org/go/libvirt"
 )
 
-func (s *Scope) CreateVM(userData string) error {
+func (s *MachineConfig) CreateVM(userData string) error {
 	conn, err := s.connect()
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func (s *Scope) CreateVM(userData string) error {
 		WithVCPU(s.vcpu()).
 		WithDiskFile(diskPath).
 		WithCloudInitISO(seedPath).
-		WithNetwork(s.Config.NetworkName).
+		WithNetwork(s.NetworkName).
 		WithSerialConsole().
 		Marshal()
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *Scope) CreateVM(userData string) error {
 	return nil
 }
 
-func (s *Scope) DeleteVM() error {
+func (s *MachineConfig) DeleteVM() error {
 	conn, err := s.connect()
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func (s *Scope) DeleteVM() error {
 		return err
 	}
 
-	if err := s.deleteVolume(conn, s.Config.VMDiskPool, s.vmDiskName()); err != nil {
+	if err := s.deleteVolume(conn, s.VMStoragePool, s.vmDiskName()); err != nil {
 		return err
 	}
 
@@ -88,15 +88,15 @@ func (s *Scope) DeleteVM() error {
 	return nil
 }
 
-func (s *Scope) createDiskFromBase(conn *libvirtClient.Connect) (string, error) {
-	basePath, err := s.getVolumePath(conn, s.Config.BasePoolName, s.Config.BaseImageName)
+func (s *MachineConfig) createDiskFromBase(conn *libvirtClient.Connect) (string, error) {
+	basePath, err := s.getVolumePath(conn, s.BasePoolName, s.BaseImageName)
 	if err != nil {
 		return "", err
 	}
 
-	pool, err := conn.LookupStoragePoolByName(s.Config.VMDiskPool)
+	pool, err := conn.LookupStoragePoolByName(s.VMStoragePool)
 	if err != nil {
-		return "", fmt.Errorf("lookup VM disk pool %q: %w", s.Config.VMDiskPool, err)
+		return "", fmt.Errorf("lookup VM disk pool %q: %w", s.VMStoragePool, err)
 	}
 	defer pool.Free()
 
@@ -123,7 +123,7 @@ func (s *Scope) createDiskFromBase(conn *libvirtClient.Connect) (string, error) 
 	return path, nil
 }
 
-func (s *Scope) getVolumePath(conn *libvirtClient.Connect, poolName, volumeName string) (string, error) {
+func (s *MachineConfig) getVolumePath(conn *libvirtClient.Connect, poolName, volumeName string) (string, error) {
 	pool, err := conn.LookupStoragePoolByName(poolName)
 	if err != nil {
 		return "", fmt.Errorf("lookup pool %q: %w", poolName, err)
@@ -144,7 +144,7 @@ func (s *Scope) getVolumePath(conn *libvirtClient.Connect, poolName, volumeName 
 	return path, nil
 }
 
-func (s *Scope) deleteDomain(conn *libvirtClient.Connect, name string) error {
+func (s *MachineConfig) deleteDomain(conn *libvirtClient.Connect, name string) error {
 	dom, err := conn.LookupDomainByName(name)
 	if err != nil {
 		return nil
@@ -167,7 +167,7 @@ func (s *Scope) deleteDomain(conn *libvirtClient.Connect, name string) error {
 	return nil
 }
 
-func (s *Scope) deleteVolume(conn *libvirtClient.Connect, poolName, volumeName string) error {
+func (s *MachineConfig) deleteVolume(conn *libvirtClient.Connect, poolName, volumeName string) error {
 	pool, err := conn.LookupStoragePoolByName(poolName)
 	if err != nil {
 		return nil

@@ -27,8 +27,8 @@ const (
 	VMStateUnknown  VMState = "Unknown"
 )
 
-func (s *Scope) VMExists() (bool, error) {
-	state, err := s.GetVMState()
+func (s *MachineConfig) VMExists() (bool, error) {
+	state, err := s.getVMState()
 	if err != nil {
 		return false, err
 	}
@@ -36,8 +36,8 @@ func (s *Scope) VMExists() (bool, error) {
 	return state != VMStateNotFound, nil
 }
 
-func (s *Scope) IsVMRunning() (bool, error) {
-	state, err := s.GetVMState()
+func (s *MachineConfig) IsVMRunning() (bool, error) {
+	state, err := s.getVMState()
 	if err != nil {
 		return false, err
 	}
@@ -45,7 +45,7 @@ func (s *Scope) IsVMRunning() (bool, error) {
 	return state == VMStateRunning, nil
 }
 
-func (s *Scope) GetVMState() (VMState, error) {
+func (s *MachineConfig) getVMState() (VMState, error) {
 	conn, err := s.connect()
 	if err != nil {
 		return VMStateUnknown, err
@@ -68,4 +68,86 @@ func (s *Scope) GetVMState() (VMState, error) {
 	}
 
 	return VMStateStopped, nil
+}
+
+func (s *InfraConfig) BasePoolExists() (bool, error) {
+	return s.storagePoolExists(s.basePoolName())
+}
+
+func (s *InfraConfig) VMStoragePoolExists() (bool, error) {
+	return s.storagePoolExists(s.vmStoragePool())
+}
+
+func (s *MachineConfig) NetworkExists() (bool, error) {
+	conn, err := s.connect()
+	if err != nil {
+		return false, err
+	}
+	defer closeConn(conn)
+
+	net, err := conn.LookupNetworkByName(s.networkName())
+	if err != nil {
+		return false, nil
+	}
+	defer net.Free()
+
+	return true, nil
+}
+
+func (s *InfraConfig) storagePoolExists(name string) (bool, error) {
+	conn, err := s.connect()
+	if err != nil {
+		return false, err
+	}
+	defer closeConn(conn)
+
+	pool, err := conn.LookupStoragePoolByName(name)
+	if err != nil {
+		return false, nil
+	}
+	defer pool.Free()
+
+	return true, nil
+}
+
+func (s *InfraConfig) IsNetworkActive() (bool, error) {
+	conn, err := s.connect()
+	if err != nil {
+		return false, err
+	}
+	defer closeConn(conn)
+
+	net, err := conn.LookupNetworkByName(s.networkName())
+	if err != nil {
+		return false, nil
+	}
+	defer net.Free()
+
+	active, err := net.IsActive()
+	if err != nil {
+		return false, fmt.Errorf("check network active %q: %w", s.networkName(), err)
+	}
+
+	return active, nil
+}
+
+func (s *InfraConfig) IsStoragePoolActive(name string) (bool, error) {
+	conn, err := s.connect()
+	if err != nil {
+		return false, err
+	}
+	defer closeConn(conn)
+
+	pool, err := conn.LookupStoragePoolByName(name)
+	if err != nil {
+		return false, nil
+	}
+	defer pool.Free()
+
+	active, err := pool.IsActive()
+	if err != nil {
+		return false, fmt.Errorf("check storage pool active %q: %w", name, err)
+	}
+
+	return active, nil
 }

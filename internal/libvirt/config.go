@@ -19,34 +19,32 @@ package libvirt
 import (
 	"fmt"
 
-	"github.com/go-logr/logr"
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirt/builders"
 	libvirtClient "libvirt.org/go/libvirt"
 )
 
-type Config struct {
+type InfraConfig struct {
 	URI string
+
+	BasePoolName  string
+	VMStoragePool string
+	NetworkName   string
+}
+
+type MachineConfig struct {
+	InfraConfig
 
 	VMName string
 
-	BasePoolName  string
-	VMDiskPool    string
-	NetworkName   string
 	BaseImageName string
-
-	MemoryMiB   uint
-	VCPU        uint
-	DiskSizeGiB uint64
-	DiskFormat  string
+	MemoryMiB     uint
+	VCPU          uint
+	DiskSizeGiB   uint64
+	DiskFormat    string
 }
 
-type Scope struct {
-	Config Config
-	Logger logr.Logger
-}
-
-func (s *Scope) connect() (*libvirtClient.Connect, error) {
-	conn, err := libvirtClient.NewConnect(s.Config.URI)
+func (s *InfraConfig) connect() (*libvirtClient.Connect, error) {
+	conn, err := libvirtClient.NewConnect(s.URI)
 	if err != nil {
 		return nil, fmt.Errorf("connect to libvirt: %w", err)
 	}
@@ -60,38 +58,50 @@ func closeConn(conn *libvirtClient.Connect) {
 	}
 }
 
-func (s *Scope) vmName() string {
-	return s.Config.VMName
+func (s *MachineConfig) vmName() string {
+	return s.VMName
 }
 
-func (s *Scope) vmDiskName() string {
-	return s.Config.VMName + ".qcow2"
+func (s *MachineConfig) vmDiskName() string {
+	return s.VMName + ".qcow2"
 }
 
-func (s *Scope) memoryMiB() uint {
-	if s.Config.MemoryMiB == 0 {
+func (s *MachineConfig) memoryMiB() uint {
+	if s.MemoryMiB == 0 {
 		return build.DefaultMemoryMiB
 	}
-	return s.Config.MemoryMiB
+	return s.MemoryMiB
 }
 
-func (s *Scope) vcpu() uint {
-	if s.Config.VCPU == 0 {
+func (s *MachineConfig) vcpu() uint {
+	if s.VCPU == 0 {
 		return build.DefaultVCPU
 	}
-	return s.Config.VCPU
+	return s.VCPU
 }
 
-func (s *Scope) diskSizeGiB() uint64 {
-	if s.Config.DiskSizeGiB == 0 {
+func (s *MachineConfig) diskSizeGiB() uint64 {
+	if s.DiskSizeGiB == 0 {
 		return build.DefaultVolumeCapacityGiB
 	}
-	return s.Config.DiskSizeGiB
+	return s.DiskSizeGiB
 }
 
-func (s *Scope) diskFormat() string {
-	if s.Config.DiskFormat == "" {
+func (s *MachineConfig) diskFormat() string {
+	if s.DiskFormat == "" {
 		return build.DefaultVolumeFormat
 	}
-	return s.Config.DiskFormat
+	return s.DiskFormat
+}
+
+func (s *InfraConfig) networkName() string {
+	return s.NetworkName
+}
+
+func (s *InfraConfig) basePoolName() string {
+	return s.BasePoolName
+}
+
+func (s *InfraConfig) vmStoragePool() string {
+	return s.VMStoragePool
 }
