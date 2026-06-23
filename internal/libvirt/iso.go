@@ -34,19 +34,19 @@ const (
 	isoLabel         = "cidata"
 )
 
-func (s *Scope) createCloudInitISO(userData string) (string, error) {
+func (s *MachineConfig) createCloudInitISO(userData string) (string, error) {
 	path := filepath.Join(os.TempDir(), s.vmName()+isoFileType)
 
 	const diskSize int64 = 10 * 1024 * 1024
 
-	mydisk, err := diskfs.Create(path, diskSize, diskfs.SectorSizeDefault)
+	cloudDisk, err := diskfs.Create(path, diskSize, diskfs.SectorSizeDefault)
 	if err != nil {
 		return "", fmt.Errorf("create ISO disk: %w", err)
 	}
 
-	mydisk.LogicalBlocksize = 2048
+	cloudDisk.LogicalBlocksize = 2048
 
-	fs, err := mydisk.CreateFilesystem(disk.FilesystemSpec{
+	fs, err := cloudDisk.CreateFilesystem(disk.FilesystemSpec{
 		Partition: 0,
 		FSType:    filesystem.TypeISO9660,
 	})
