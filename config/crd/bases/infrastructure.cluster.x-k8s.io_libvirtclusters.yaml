@@ -39,6 +39,8 @@ spec:
           spec:
             description: spec defines the desired state of LibvirtCluster
             properties:
+              basePoolName:
+                type: string
               controlPlaneEndpoint:
                 description: ControlPlaneEndpoint is the endpoint used to reach the
                   workload cluster API server
@@ -56,10 +58,14 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+              networkName:
+                type: string
               uri:
                 description: |-
                   URI is the libvirt connection URI
-                  Example: qemu+ssh://root@192.168.1.15/system
+                  Example: qemu+tcp://libvirt.io/system
+                type: string
+              vmStoragePool:
                 type: string
             type: object
           status:

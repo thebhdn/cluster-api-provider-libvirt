@@ -16,7 +16,9 @@ limitations under the License.
 
 package libvirt
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type VMState string
 

@@ -22,5 +22,8 @@ const (
 )
 
 const (
-	ReadyCondition = "Ready"
+	InfrastructureReadyCondition               = "InfrastructureReady"
+	InfrastructureProvisioningInProgressReason = "InfrastructureProvisioningInProgress"
+	InfrastructureProvisioningFailedReason     = "InfrastructureProvisioningFailed"
+	InfrastructureReadyReason                  = "InfrastructureReady"
 )

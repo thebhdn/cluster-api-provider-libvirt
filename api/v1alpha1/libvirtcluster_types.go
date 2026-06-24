@@ -24,13 +24,22 @@ import (
 // LibvirtClusterSpec defines the desired state of LibvirtCluster
 type LibvirtClusterSpec struct {
 	// URI is the libvirt connection URI
-	// Example: qemu+ssh://root@192.168.1.15/system
+	// Example: qemu+tcp://libvirt.io/system
 	// +optional
 	URI string `json:"uri,omitempty"`
 
 	// ControlPlaneEndpoint is the endpoint used to reach the workload cluster API server
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+
+	// +optional
+	BasePoolName string `json:"basePoolName,omitempty"`
+
+	// +optional
+	VMStoragePool string `json:"vmStoragePool,omitempty"`
+
+	// +optional
+	NetworkName string `json:"networkName,omitempty"`
 }
 
 // LibvirtClusterStatus defines the observed state of LibvirtCluster
@@ -75,4 +84,13 @@ type LibvirtClusterList struct {
 
 func init() {
 	SchemeBuilder.Register(&LibvirtCluster{}, &LibvirtClusterList{})
+}
+
+func (l *LibvirtCluster) GetConditions() []metav1.Condition {
+	return l.Status.Conditions
+}
+
+// SetConditions sets the conditions on this object.
+func (l *LibvirtCluster) SetConditions(conditions []metav1.Condition) {
+	l.Status.Conditions = conditions
 }
