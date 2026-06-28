@@ -83,7 +83,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	libvirtMachine.Status.Ready = true
 
 	meta.SetStatusCondition(&libvirtMachine.Status.Conditions, metav1.Condition{
-		Type:               infrav1.ReadyCondition,
+		Type:               infrav1.InfrastructureReadyCondition,
 		Status:             metav1.ConditionTrue,
 		Reason:             "LibvirtMachineReady",
 		Message:            "Libvirt machine infrastructure is ready",

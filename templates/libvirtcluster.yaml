@@ -1,0 +1,29 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: libvirt-xd
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 192.168.0.0/16
+    services:
+      cidrBlocks:
+        - 10.96.0.0/12
+    serviceDomain: cluster.local
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: LibvirtCluster
+    name: libvirt-xd
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: LibvirtCluster
+metadata:
+  name: libvirt-xd
+  namespace: default
+spec:
+  uri: qemu+tls://libvirt.lab/system
+  networkName: lab-nat
+  basePoolName: base-images
+  vmStoragePool: vm-disks

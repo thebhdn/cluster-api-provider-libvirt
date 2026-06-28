@@ -37,6 +37,7 @@ import (
 
 	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/controller"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -48,8 +49,9 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(infrastructurev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+	utilruntime.Must(infrastructurev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(clusterv1.AddToScheme(scheme))
 }
 
 // nolint:gocyclo
