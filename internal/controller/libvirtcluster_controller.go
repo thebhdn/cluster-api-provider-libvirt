@@ -155,6 +155,13 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
+	conditions.Set(scope.LibvirtCluster, v1.Condition{
+		Type:    infrav1.InfrastructureReadyCondition,
+		Status:  v1.ConditionTrue,
+		Reason:  infrav1.InfrastructureReadyCondition,
+		Message: "All infrastructure components are ready",
+	})
+
 	scope.LibvirtCluster.Status.Ready = true
 
 	return ctrl.Result{}, nil
@@ -173,13 +180,14 @@ func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirt.InfraConfig 
 	}
 }
 
+// TODO: make cluster controller manage libvirt infra
 func ensureInfra(s *ClusterScope) error {
 	netActive, err := s.IsNetworkActive()
 	if err != nil {
 		return fmt.Errorf("error checking libvirt network %q: %w", s.NetworkName, err)
 	}
 	if !netActive {
-		return fmt.Errorf("network %q is not active: %w", s.NetworkName, err)
+		return fmt.Errorf("network %q is not active", s.NetworkName)
 	}
 
 	baseStoragePool, err := s.BasePoolExists()
@@ -187,7 +195,7 @@ func ensureInfra(s *ClusterScope) error {
 		return fmt.Errorf("error checking base storage pool %q: %w", s.BasePoolName, err)
 	}
 	if !baseStoragePool {
-		return fmt.Errorf("base storage pool %q is not active: %w", s.BasePoolName, err)
+		return fmt.Errorf("base storage pool %q is not active", s.BasePoolName)
 	}
 
 	vmStoragePool, err := s.VMStoragePoolExists()
@@ -195,7 +203,7 @@ func ensureInfra(s *ClusterScope) error {
 		return fmt.Errorf("error checking vm storage pool %q: %w", s.BasePoolName, err)
 	}
 	if !vmStoragePool {
-		return fmt.Errorf("base vm pool %q is not active: %w", s.BasePoolName, err)
+		return fmt.Errorf("base vm pool %q is not active", s.BasePoolName)
 	}
 
 	return nil
