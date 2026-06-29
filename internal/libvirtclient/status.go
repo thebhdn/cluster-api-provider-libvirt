@@ -20,56 +20,56 @@ import (
 	"fmt"
 )
 
-type VMState string
+type DomainState string
 
 const (
-	VMStateNotFound VMState = "NotFound"
-	VMStateRunning  VMState = "Running"
-	VMStateStopped  VMState = "Stopped"
-	VMStateUnknown  VMState = "Unknown"
+	DomainStateNotFound DomainState = "NotFound"
+	DomainStateRunning  DomainState = "Running"
+	DomainStateStopped  DomainState = "Stopped"
+	DomainStateUnknown  DomainState = "Unknown"
 )
 
-func (s *MachineConfig) VMExists() (bool, error) {
-	state, err := s.getVMState()
+func (s *MachineConfig) DomainExists() (bool, error) {
+	state, err := s.getDomainState()
 	if err != nil {
 		return false, err
 	}
 
-	return state != VMStateNotFound, nil
+	return state != DomainStateNotFound, nil
 }
 
-func (s *MachineConfig) IsVMRunning() (bool, error) {
-	state, err := s.getVMState()
+func (s *MachineConfig) IsDomainRunning() (bool, error) {
+	state, err := s.getDomainState()
 	if err != nil {
 		return false, err
 	}
 
-	return state == VMStateRunning, nil
+	return state == DomainStateRunning, nil
 }
 
-func (s *MachineConfig) getVMState() (VMState, error) {
+func (s *MachineConfig) getDomainState() (DomainState, error) {
 	conn, err := s.connect()
 	if err != nil {
-		return VMStateUnknown, err
+		return DomainStateUnknown, err
 	}
 	defer closeConn(conn)
 
-	dom, err := conn.LookupDomainByName(s.vmName())
+	dom, err := conn.LookupDomainByName(s.domainName())
 	if err != nil {
-		return VMStateNotFound, nil
+		return DomainStateNotFound, nil
 	}
 	defer dom.Free()
 
 	active, err := dom.IsActive()
 	if err != nil {
-		return VMStateUnknown, fmt.Errorf("check domain active %q: %w", s.vmName(), err)
+		return DomainStateUnknown, fmt.Errorf("check domain active %q: %w", s.domainName(), err)
 	}
 
 	if active {
-		return VMStateRunning, nil
+		return DomainStateRunning, nil
 	}
 
-	return VMStateStopped, nil
+	return DomainStateStopped, nil
 }
 
 func (s *InfraConfig) BasePoolExists() (bool, error) {
@@ -77,7 +77,7 @@ func (s *InfraConfig) BasePoolExists() (bool, error) {
 }
 
 func (s *InfraConfig) VMStoragePoolExists() (bool, error) {
-	return s.storagePoolExists(s.vmStoragePool())
+	return s.storagePoolExists(s.domainPoolName())
 }
 
 func (s *MachineConfig) NetworkExists() (bool, error) {

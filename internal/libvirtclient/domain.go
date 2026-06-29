@@ -22,11 +22,11 @@ import (
 	"path/filepath"
 	"time"
 
-	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirt/builders"
+	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirtClient "libvirt.org/go/libvirt"
 )
 
-func (s *MachineConfig) CreateVM(userData string) error {
+func (s *MachineConfig) CreateDomain(userData string) error {
 	conn, err := s.connect()
 	if err != nil {
 		return err
@@ -43,12 +43,12 @@ func (s *MachineConfig) CreateVM(userData string) error {
 		return err
 	}
 
-	domainXML, err := build.NewDomain(s.vmName()).
+	domainXML, err := build.NewDomain(s.domainName()).
 		WithMemoryMiB(s.memoryMiB()).
-		WithVCPU(s.vcpu()).
+		WithVCPU(s.vCPU()).
 		WithDiskFile(diskPath).
 		WithCloudInitISO(seedPath).
-		WithNetwork(s.NetworkName).
+		WithNetwork(s.Network).
 		WithSerialConsole().
 		Marshal()
 	if err != nil {
@@ -57,50 +57,50 @@ func (s *MachineConfig) CreateVM(userData string) error {
 
 	dom, err := conn.DomainDefineXML(domainXML)
 	if err != nil {
-		return fmt.Errorf("define domain %q: %w", s.vmName(), err)
+		return fmt.Errorf("define domain %q: %w", s.domainName(), err)
 	}
 	defer dom.Free()
 
 	if err := dom.Create(); err != nil {
-		return fmt.Errorf("start domain %q: %w", s.vmName(), err)
+		return fmt.Errorf("start domain %q: %w", s.domainName(), err)
 	}
 
 	return nil
 }
 
-func (s *MachineConfig) DeleteVM() error {
+func (s *MachineConfig) DeleteDomain() error {
 	conn, err := s.connect()
 	if err != nil {
 		return err
 	}
 	defer closeConn(conn)
 
-	if err := s.deleteDomain(conn, s.vmName()); err != nil {
+	if err := s.deleteDomain(conn, s.domainName()); err != nil {
 		return err
 	}
 
-	if err := s.deleteVolume(conn, s.VMStoragePool, s.vmDiskName()); err != nil {
+	if err := s.deleteVolume(conn, s.DomainPool, s.domainDiskName()); err != nil {
 		return err
 	}
 
-	_ = os.Remove(filepath.Join(os.TempDir(), s.vmName()+isoFileType))
+	_ = os.Remove(filepath.Join(os.TempDir(), s.domainName()+isoFileType))
 
 	return nil
 }
 
 func (s *MachineConfig) createDiskFromBase(conn *libvirtClient.Connect) (string, error) {
-	basePath, err := s.getVolumePath(conn, s.BasePoolName, s.BaseImageName)
+	basePath, err := s.getVolumePath(conn, s.BasePool, s.BaseImage)
 	if err != nil {
 		return "", err
 	}
 
-	pool, err := conn.LookupStoragePoolByName(s.VMStoragePool)
+	pool, err := conn.LookupStoragePoolByName(s.DomainPool)
 	if err != nil {
-		return "", fmt.Errorf("lookup VM disk pool %q: %w", s.VMStoragePool, err)
+		return "", fmt.Errorf("lookup VM disk pool %q: %w", s.DomainPool, err)
 	}
 	defer pool.Free()
 
-	volumeXML, err := build.NewVolume(s.vmDiskName()).
+	volumeXML, err := build.NewVolume(s.domainDiskName()).
 		WithCapacityGiB(s.diskSizeGiB()).
 		WithFormat(s.diskFormat()).
 		WithBackingStore(basePath, s.diskFormat()).
@@ -111,7 +111,7 @@ func (s *MachineConfig) createDiskFromBase(conn *libvirtClient.Connect) (string,
 
 	vol, err := pool.StorageVolCreateXML(volumeXML, 0)
 	if err != nil {
-		return "", fmt.Errorf("create VM disk volume %q: %w", s.vmDiskName(), err)
+		return "", fmt.Errorf("create VM disk volume %q: %w", s.domainDiskName(), err)
 	}
 	defer vol.Free()
 

@@ -22,7 +22,7 @@ const (
 	DefaultDomainType = "kvm"
 	DefaultMemoryMiB  = uint(1024)
 	DefaultMemoryUnit = "MiB"
-	DefaultVCPU       = uint(1)
+	DefaultCPU        = uint(1)
 
 	DefaultOSType = "hvm"
 	DefaultOSArch = "x86_64"
@@ -57,7 +57,7 @@ func NewDomain(name string) *DomainBuilder {
 				Unit:  DefaultMemoryUnit,
 			},
 			VCPU: &libvirtxml.DomainVCPU{
-				Value: DefaultVCPU,
+				Value: DefaultCPU,
 			},
 			OS: &libvirtxml.DomainOS{
 				Type: &libvirtxml.DomainOSType{

@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
-	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirt"
+	libvirt "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -63,7 +63,7 @@ type ClusterScope struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status;machinesets;machines;machines/status;machinepools;machinepools/status,verbs=get;list;watch;create;update;patch;delete
 
-func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling libvirt-cluster", "cluster-name", req.Name, "cluster-namespace", req.Namespace)
 
@@ -76,7 +76,6 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 			return ctrl.Result{}, nil
 		}
-
 		logger.Error(err, "Error happened when getting libvirt-cluster",
 			"cluster-name", req.Name,
 			"cluster-namespace", req.Namespace)
@@ -95,10 +94,11 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	defer func() {
-		patchErr := helper.Patch(ctx, libvirtCluster)
-		if patchErr != nil {
-			clusterString := libvirtCluster.Namespace + "/" + libvirtCluster.Name
-			logger.Error(patchErr, "unable to patch", "cluster", clusterString)
+		if patchErr := helper.Patch(ctx, libvirtCluster); patchErr != nil {
+			logger.Error(patchErr, "unable to patch", "cluster", client.ObjectKeyFromObject(libvirtCluster).String())
+			if rerr == nil {
+				rerr = patchErr
+			}
 		}
 	}()
 
@@ -110,6 +110,7 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	scope := &ClusterScope{
 		Cluster:        clusterOwner,
 		LibvirtCluster: libvirtCluster,
+		Ctx:            ctx,
 		InfraConfig:    newInfraConfig(libvirtCluster),
 	}
 
@@ -129,7 +130,6 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 
 	if !controllerutil.ContainsFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer) {
 		controllerutil.AddFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer)
-
 		return ctrl.Result{}, nil
 	}
 
@@ -150,7 +150,6 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 			Reason:  infrav1.InfrastructureProvisioningFailedReason,
 			Message: err.Error(),
 		})
-
 		// TODO: define sentinel errs
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
@@ -164,47 +163,49 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 
 	scope.LibvirtCluster.Status.Ready = true
 
+	logger.Info("LibvirtCluster %s is provisioned", scope.LibvirtCluster.Name)
+
 	return ctrl.Result{}, nil
 }
 
-func (r *LibvirtClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
-	return ctrl.Result{}, nil
-}
-
-func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirt.InfraConfig {
-	return libvirt.InfraConfig{
-		URI:           libvirtCluster.Spec.URI,
-		BasePoolName:  libvirtCluster.Spec.BasePoolName,
-		VMStoragePool: libvirtCluster.Spec.VMStoragePool,
-		NetworkName:   libvirtCluster.Spec.NetworkName,
-	}
-}
+// func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
+// 	return ctrl.Result{}, nil
+// }
 
 // TODO: make cluster controller manage libvirt infra
 func ensureInfra(s *ClusterScope) error {
 	netActive, err := s.IsNetworkActive()
 	if err != nil {
-		return fmt.Errorf("error checking libvirt network %q: %w", s.NetworkName, err)
+		return fmt.Errorf("error checking libvirt network %q: %w", s.Network, err)
 	}
 	if !netActive {
-		return fmt.Errorf("network %q is not active", s.NetworkName)
+		return fmt.Errorf("network %q is not active", s.Network)
 	}
 
 	baseStoragePool, err := s.BasePoolExists()
 	if err != nil {
-		return fmt.Errorf("error checking base storage pool %q: %w", s.BasePoolName, err)
+		return fmt.Errorf("error checking base storage pool %q: %w", s.BasePool, err)
 	}
 	if !baseStoragePool {
-		return fmt.Errorf("base storage pool %q is not active", s.BasePoolName)
+		return fmt.Errorf("base storage pool %q is not active", s.BasePool)
 	}
 
 	vmStoragePool, err := s.VMStoragePoolExists()
 	if err != nil {
-		return fmt.Errorf("error checking vm storage pool %q: %w", s.BasePoolName, err)
+		return fmt.Errorf("error checking vm storage pool %q: %w", s.BasePool, err)
 	}
 	if !vmStoragePool {
-		return fmt.Errorf("base vm pool %q is not active", s.BasePoolName)
+		return fmt.Errorf("base vm pool %q is not active", s.BasePool)
 	}
 
 	return nil
+}
+
+func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirt.InfraConfig {
+	return libvirt.InfraConfig{
+		URI:        libvirtCluster.Spec.URI,
+		BasePool:   libvirtCluster.Spec.BasePool,
+		DomainPool: libvirtCluster.Spec.DomainPool,
+		Network:    libvirtCluster.Spec.Network,
+	}
 }
