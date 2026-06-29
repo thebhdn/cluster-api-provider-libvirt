@@ -18,18 +18,21 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+	libvirt "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
+	capiutil "sigs.k8s.io/cluster-api/util"
+
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // LibvirtMachineReconciler reconciles a LibvirtMachine object
@@ -38,12 +41,21 @@ type LibvirtMachineReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+type MachineScope struct {
+	Cluster        *clusterv1.Cluster
+	Machine        *clusterv1.Machine
+	Ctx            context.Context
+	LibvirtCluster *infrav1.LibvirtCluster
+	LibvirtMachine *infrav1.LibvirtMachine
+	libvirt.MachineConfig
+}
+
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines;machines/status,verbs=get;list;watch
 
-func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling libvirt machine")
 
@@ -52,45 +64,76 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Get(ctx, req.NamespacedName, libvirtMachine)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.Info("harvestermachine not found")
+			logger.Info("libvirtMachine not found")
 
 			return ctrl.Result{}, nil
 		}
-
-		logger.Error(err, "Error happened when getting harvestermachine")
-
+		logger.Error(err, "Error happened when getting libvirtMachine")
 		return ctrl.Result{}, err
 	}
 
-	if !controllerutil.ContainsFinalizer(libvirtMachine, infrav1.LibvirtMachineFinalizer) {
-		controllerutil.AddFinalizer(libvirtMachine, infrav1.LibvirtMachineFinalizer)
-		return ctrl.Result{}, r.Update(ctx, libvirtMachine)
+	// Initialize the patch helper
+	helper, err := patch.NewHelper(libvirtMachine, r.Client)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	if !libvirtMachine.ObjectMeta.DeletionTimestamp.IsZero() {
-		controllerutil.RemoveFinalizer(libvirtMachine, infrav1.LibvirtMachineFinalizer)
-		return ctrl.Result{}, r.Update(ctx, libvirtMachine)
-	}
-
-	if libvirtMachine.Spec.ProviderID == nil {
-		providerID := fmt.Sprintf("libvirt://%s/%s", libvirtMachine.Namespace, libvirtMachine.Name)
-		libvirtMachine.Spec.ProviderID = &providerID
-		if err := r.Update(ctx, libvirtMachine); err != nil {
-			return ctrl.Result{}, err
+	defer func() {
+		if patchErr := helper.Patch(ctx, libvirtMachine); patchErr != nil {
+			logger.Error(patchErr, "unable to patch", "cluster", client.ObjectKeyFromObject(libvirtMachine).String())
+			if rerr == nil {
+				rerr = patchErr
+			}
 		}
+	}()
+
+	ownerMachine, err := util.GetOwnerMachine(ctx, r.Client, libvirtMachine.ObjectMeta)
+	if err != nil {
+		logger.Error(err, "unable to get owner machine")
+		return ctrl.Result{}, err
 	}
 
-	libvirtMachine.Status.Ready = true
+	if ownerMachine == nil {
+		logger.Info("waiting for machine controller to set OwnerRef on LibvirtMachine")
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
 
-	meta.SetStatusCondition(&libvirtMachine.Status.Conditions, metav1.Condition{
-		Type:               infrav1.InfrastructureReadyCondition,
-		Status:             metav1.ConditionTrue,
-		Reason:             "LibvirtMachineReady",
-		Message:            "Libvirt machine infrastructure is ready",
-		ObservedGeneration: libvirtMachine.Generation,
-	})
+	ownerCluster, err := capiutil.GetClusterFromMetadata(ctx, r.Client, ownerMachine.ObjectMeta)
+	if err != nil {
+		logger.Info("LibvirtMachine owner machine is missing cluster label or cluster does not exist")
+		return ctrl.Result{}, err
+	}
 
-	return ctrl.Result{}, r.Status().Update(ctx, libvirtMachine)
+	if ownerCluster == nil {
+		logger.Info("Please link this machine with a cluster using the label " + clusterv1.ClusterNameLabel + ": <name of cluster>")
+		return ctrl.Result{}, nil
+	}
+
+	logger = logger.WithValues("machine", ownerMachine.Namespace+"/"+ownerMachine.Name, "cluster", ownerCluster.Namespace+"/"+ownerCluster.Name)
+
+	libvirtCluster := &infrav1.LibvirtCluster{}
+
+	libvirtClusterKey := types.NamespacedName{
+		Namespace: ownerCluster.Namespace,
+		Name:      ownerCluster.Spec.InfrastructureRef.Name,
+	}
+
+	err = r.Get(ctx, libvirtClusterKey, libvirtCluster)
+	if err != nil {
+		logger.Error(err, "unable to find corresponding libvirtCluster to libvirtMachine")
+		return ctrl.Result{}, err
+	}
+
+	scope := &MachineScope{
+		Cluster:        ownerCluster,
+		Machine:        ownerMachine,
+		LibvirtCluster: libvirtCluster,
+		LibvirtMachine: libvirtMachine,
+		MachineConfig:  newMachineConfig(libvirtMachine),
+		Ctx:            ctx,
+	}
+
+	return r.reconcileNormal(scope)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -99,4 +142,21 @@ func (r *LibvirtMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&infrav1.LibvirtMachine{}).
 		Named("libvirtmachine").
 		Complete(r)
+}
+
+func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Result, error) {
+	return ctrl.Result{}, nil
+}
+
+// func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
+// 	return ctrl.Result{}, nil
+// }
+
+func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine) libvirt.MachineConfig {
+	return libvirt.MachineConfig{
+		BaseImage: libvirtMachine.Spec.Image,
+		MemoryMiB: uint(libvirtMachine.Spec.MemoryMiB),
+		VCPU:      uint(libvirtMachine.Spec.VCPU),
+		DiskSize:  uint64(libvirtMachine.Spec.DiskGiB),
+	}
 }

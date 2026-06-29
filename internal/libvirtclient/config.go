@@ -19,28 +19,27 @@ package libvirt
 import (
 	"fmt"
 
-	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirt/builders"
+	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirtClient "libvirt.org/go/libvirt"
 )
 
 type InfraConfig struct {
 	URI string
 
-	BasePoolName  string
-	VMStoragePool string
-	NetworkName   string
+	DomainName string
+	BasePool   string
+	DomainPool string
+	Network    string
 }
 
 type MachineConfig struct {
 	InfraConfig
 
-	VMName string
-
-	BaseImageName string
-	MemoryMiB     uint
-	VCPU          uint
-	DiskSizeGiB   uint64
-	DiskFormat    string
+	BaseImage  string
+	MemoryMiB  uint
+	VCPU       uint
+	DiskSize   uint64
+	DiskFormat string
 }
 
 func (s *InfraConfig) connect() (*libvirtClient.Connect, error) {
@@ -58,12 +57,12 @@ func closeConn(conn *libvirtClient.Connect) {
 	}
 }
 
-func (s *MachineConfig) vmName() string {
-	return s.VMName
+func (s *MachineConfig) domainName() string {
+	return s.DomainName
 }
 
-func (s *MachineConfig) vmDiskName() string {
-	return s.VMName + ".qcow2"
+func (s *MachineConfig) domainDiskName() string {
+	return s.DomainName + ".qcow2"
 }
 
 func (s *MachineConfig) memoryMiB() uint {
@@ -73,18 +72,18 @@ func (s *MachineConfig) memoryMiB() uint {
 	return s.MemoryMiB
 }
 
-func (s *MachineConfig) vcpu() uint {
+func (s *MachineConfig) vCPU() uint {
 	if s.VCPU == 0 {
-		return build.DefaultVCPU
+		return build.DefaultCPU
 	}
 	return s.VCPU
 }
 
 func (s *MachineConfig) diskSizeGiB() uint64 {
-	if s.DiskSizeGiB == 0 {
+	if s.DiskSize == 0 {
 		return build.DefaultVolumeCapacityGiB
 	}
-	return s.DiskSizeGiB
+	return s.DiskSize
 }
 
 func (s *MachineConfig) diskFormat() string {
@@ -95,13 +94,13 @@ func (s *MachineConfig) diskFormat() string {
 }
 
 func (s *InfraConfig) networkName() string {
-	return s.NetworkName
+	return s.Network
 }
 
 func (s *InfraConfig) basePoolName() string {
-	return s.BasePoolName
+	return s.BasePool
 }
 
-func (s *InfraConfig) vmStoragePool() string {
-	return s.VMStoragePool
+func (s *InfraConfig) domainPoolName() string {
+	return s.DomainPool
 }

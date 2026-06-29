@@ -33,13 +33,13 @@ type LibvirtClusterSpec struct {
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 
 	// +optional
-	BasePoolName string `json:"basePoolName,omitempty"`
+	BasePool string `json:"basePool,omitempty"`
 
 	// +optional
-	VMStoragePool string `json:"vmStoragePool,omitempty"`
+	DomainPool string `json:"domainPool,omitempty"`
 
 	// +optional
-	NetworkName string `json:"networkName,omitempty"`
+	Network string `json:"network,omitempty"`
 }
 
 // LibvirtClusterStatus defines the observed state of LibvirtCluster

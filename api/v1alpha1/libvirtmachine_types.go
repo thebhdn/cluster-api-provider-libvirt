@@ -32,11 +32,11 @@ type LibvirtMachineSpec struct {
 	// +optional
 	VCPU int32 `json:"vcpu,omitempty"`
 
-	// MemoryMiB is VM memory in MiB
+	// MemoryMiB is Domain memory in MiB
 	// +optional
 	MemoryMiB int32 `json:"memoryMiB,omitempty"`
 
-	// DiskGiB is VM disk size in GiB
+	// DiskGiB is Domain disk size in GiB
 	// +optional
 	DiskGiB int32 `json:"diskGiB,omitempty"`
 

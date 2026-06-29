@@ -35,7 +35,7 @@ const (
 )
 
 func (s *MachineConfig) createCloudInitISO(userData string) (string, error) {
-	path := filepath.Join(os.TempDir(), s.vmName()+isoFileType)
+	path := filepath.Join(os.TempDir(), s.domainName()+isoFileType)
 
 	const diskSize int64 = 10 * 1024 * 1024
 
@@ -64,8 +64,8 @@ func (s *MachineConfig) createCloudInitISO(userData string) (string, error) {
 
 	metaData := fmt.Sprintf(
 		"instance-id: %s\nlocal-hostname: %s\n",
-		s.vmName(),
-		s.vmName(),
+		s.domainName(),
+		s.domainName(),
 	)
 
 	if err := writeISOFile(fs, metaDataFileName, []byte(metaData)); err != nil {

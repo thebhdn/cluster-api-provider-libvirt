@@ -39,7 +39,7 @@ spec:
           spec:
             description: spec defines the desired state of LibvirtCluster
             properties:
-              basePoolName:
+              basePool:
                 type: string
               controlPlaneEndpoint:
                 description: ControlPlaneEndpoint is the endpoint used to reach the
@@ -58,14 +58,14 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
-              networkName:
+              domainPool:
+                type: string
+              network:
                 type: string
               uri:
                 description: |-
                   URI is the libvirt connection URI
                   Example: qemu+tcp://libvirt.io/system
-                type: string
-              vmStoragePool:
                 type: string
             type: object
           status:
