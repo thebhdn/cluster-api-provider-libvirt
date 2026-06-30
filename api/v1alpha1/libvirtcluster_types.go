@@ -48,9 +48,17 @@ type LibvirtClusterStatus struct {
 	// +optional
 	Ready bool `json:"ready,omitempty"`
 
+	// +optional
+	Initialization LibvirtClusterInitializationStatus `json:"initialization,omitempty,omitzero"`
+
 	// Conditions represent the latest available observations of the LibvirtCluster state
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+type LibvirtClusterInitializationStatus struct {
+	// +optional
+	Provisioned bool `json:"provisioned,omitempty"`
 }
 
 // +kubebuilder:object:root=true

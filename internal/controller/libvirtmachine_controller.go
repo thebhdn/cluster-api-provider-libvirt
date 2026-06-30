@@ -23,13 +23,20 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	libvirt "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capiutil "sigs.k8s.io/cluster-api/util"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -80,7 +87,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	defer func() {
 		if patchErr := helper.Patch(ctx, libvirtMachine); patchErr != nil {
-			logger.Error(patchErr, "unable to patch", "cluster", client.ObjectKeyFromObject(libvirtMachine).String())
+			logger.Error(patchErr, "unable to patch", "machine", client.ObjectKeyFromObject(libvirtMachine).String())
 			if rerr == nil {
 				rerr = patchErr
 			}
@@ -133,24 +140,88 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Ctx:            ctx,
 	}
 
+	if !libvirtMachine.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(scope)
+	}
+
 	return r.reconcileNormal(scope)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *LibvirtMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *LibvirtMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	clusterToLibvirtMachine, err := util.ClusterToTypedObjectsMapper(mgr.GetClient(), &infrav1.LibvirtMachineList{}, mgr.GetScheme())
+	if err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.LibvirtMachine{}).
+		Watches(
+			&clusterv1.Machine{},
+			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("LibvirtMachine"))),
+			builder.WithPredicates(predicates.ResourceNotPaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
+		).
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(clusterToLibvirtMachine),
+			builder.WithPredicates(predicates.ClusterUnpaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
+		).
 		Named("libvirtmachine").
 		Complete(r)
 }
 
 func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Result, error) {
+	logger := log.FromContext(scope.Ctx)
+
+	if annotations.IsPaused(scope.Cluster, scope.LibvirtMachine) {
+		logger.Info("Reconciliation is paused for this object")
+
+		scope.LibvirtMachine.Status.Ready = false
+		scope.LibvirtMachine.Status.Initialization.Provisioned = false
+
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer first if not exist to avoid the race condition between init and delete
+	if !controllerutil.ContainsFinalizer(scope.LibvirtMachine, infrav1.LibvirtMachineFinalizer) && scope.LibvirtMachine.DeletionTimestamp.IsZero() {
+		controllerutil.AddFinalizer(scope.LibvirtMachine, infrav1.LibvirtMachineFinalizer)
+
+		scope.LibvirtMachine.Status.Ready = false
+		scope.LibvirtMachine.Status.Initialization.Provisioned = false
+
+		return ctrl.Result{}, nil
+	}
+
+	infraProvisioned := scope.Cluster.Status.Initialization.InfrastructureProvisioned
+	if infraProvisioned == nil || !*infraProvisioned {
+		logger.Info("Waiting for Infrastructure to be ready...")
+
+		scope.LibvirtMachine.Status.Ready = false
+		scope.LibvirtMachine.Status.Initialization.Provisioned = false
+
+		conditions.Set(scope.LibvirtMachine, metav1.Condition{
+			Type:    infrav1.InfrastructureReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  infrav1.InfrastructureProvisioningInProgressReason,
+			Message: "Waiting for cluster infrastructure to be ready",
+		})
+
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
+
+	// Set InfrastructureReady condition when cluster infrastructure is ready
+	conditions.Set(scope.LibvirtMachine, metav1.Condition{
+		Type:    infrav1.InfrastructureReadyCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  infrav1.InfrastructureReadyReason,
+		Message: "Cluster infrastructure is ready",
+	})
+
 	return ctrl.Result{}, nil
 }
 
-// func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
-// 	return ctrl.Result{}, nil
-// }
+func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Result, error) {
+	return ctrl.Result{}, nil
+}
 
 func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine) libvirt.MachineConfig {
 	return libvirt.MachineConfig{
