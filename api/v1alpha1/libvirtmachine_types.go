@@ -58,6 +58,14 @@ type LibvirtMachineStatus struct {
 	// Conditions represent the latest available observations of the LibvirtMachine state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	Initialization LibvirtMachineInitializationStatus `json:"initialization,omitempty,omitzero"`
+}
+
+type LibvirtMachineInitializationStatus struct {
+	// +optional
+	Provisioned bool `json:"provisioned,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -91,4 +99,13 @@ type LibvirtMachineList struct {
 
 func init() {
 	SchemeBuilder.Register(&LibvirtMachine{}, &LibvirtMachineList{})
+}
+
+func (l *LibvirtMachine) GetConditions() []metav1.Condition {
+	return l.Status.Conditions
+}
+
+// SetConditions sets the conditions on this object.
+func (l *LibvirtMachine) SetConditions(conditions []metav1.Condition) {
+	l.Status.Conditions = conditions
 }

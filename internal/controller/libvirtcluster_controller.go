@@ -118,7 +118,7 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *LibvirtClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *LibvirtClusterReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.LibvirtCluster{}).
 		Named("libvirtcluster").
@@ -162,6 +162,7 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 	})
 
 	scope.LibvirtCluster.Status.Ready = true
+	scope.LibvirtCluster.Status.Initialization.Provisioned = true
 
 	logger.Info("LibvirtCluster %s is provisioned", scope.LibvirtCluster.Name)
 

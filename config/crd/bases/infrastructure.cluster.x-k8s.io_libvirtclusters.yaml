@@ -129,6 +129,11 @@ spec:
                   - type
                   type: object
                 type: array
+              initialization:
+                properties:
+                  provisioned:
+                    type: boolean
+                type: object
               ready:
                 description: Ready indicates the cluster-level infrastructure is ready
                 type: boolean

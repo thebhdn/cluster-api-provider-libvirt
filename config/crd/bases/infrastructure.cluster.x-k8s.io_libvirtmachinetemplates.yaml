@@ -72,14 +72,14 @@ spec:
                     description: Spec is the LibvirtMachine spec.
                     properties:
                       diskGiB:
-                        description: DiskGiB is VM disk size in GiB
+                        description: DiskGiB is Domain disk size in GiB
                         format: int32
                         type: integer
                       image:
                         description: Image is the base image path or URL
                         type: string
                       memoryMiB:
-                        description: MemoryMiB is VM memory in MiB
+                        description: MemoryMiB is Domain memory in MiB
                         format: int32
                         type: integer
                       providerID:
