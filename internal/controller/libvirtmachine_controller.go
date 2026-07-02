@@ -35,9 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
-	libvirt "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
+	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	capiutil "sigs.k8s.io/cluster-api/util"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
@@ -54,7 +53,7 @@ type MachineScope struct {
 	Ctx            context.Context
 	LibvirtCluster *infrav1.LibvirtCluster
 	LibvirtMachine *infrav1.LibvirtMachine
-	libvirt.MachineConfig
+	libvirtclient.MachineConfig
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines,verbs=get;list;watch;create;update;patch;delete
@@ -105,7 +104,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
-	ownerCluster, err := capiutil.GetClusterFromMetadata(ctx, r.Client, ownerMachine.ObjectMeta)
+	ownerCluster, err := util.GetClusterFromMetadata(ctx, r.Client, ownerMachine.ObjectMeta)
 	if err != nil {
 		logger.Info("LibvirtMachine owner machine is missing cluster label or cluster does not exist")
 		return ctrl.Result{}, err
@@ -216,6 +215,27 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		Message: "Cluster infrastructure is ready",
 	})
 
+	state, err := scope.GetDomainState()
+	if err != nil {
+		logger.Error(err, "unable to get domain state")
+		return ctrl.Result{}, err
+	}
+
+	switch state {
+	case libvirtclient.DomainStateNotFound:
+		logger.Info("domain doesn't exist, creating....", "domain", scope.DomainName)
+		return ctrl.Result{}, nil
+	case libvirtclient.DomainStateStopped:
+		logger.Info("domain stopped, starting....", "domain", scope.DomainName)
+		return ctrl.Result{}, nil
+	case libvirtclient.DomainStateRunning:
+		logger.Info("domain is running", "domain", scope.DomainName)
+		return ctrl.Result{}, nil
+	case libvirtclient.DomainStateUnknown:
+		logger.Info("domain state is uknown, requeuing", "domain", scope.DomainName)
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -223,8 +243,8 @@ func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine) libvirt.MachineConfig {
-	return libvirt.MachineConfig{
+func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine) libvirtclient.MachineConfig {
+	return libvirtclient.MachineConfig{
 		BaseImage: libvirtMachine.Spec.Image,
 		MemoryMiB: uint(libvirtMachine.Spec.MemoryMiB),
 		VCPU:      uint(libvirtMachine.Spec.VCPU),

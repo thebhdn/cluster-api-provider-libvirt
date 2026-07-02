@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package libvirt
+package libvirtclient
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ import (
 	"time"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
-	libvirtClient "libvirt.org/go/libvirt"
+	libvirt "libvirt.org/go/libvirt"
 )
 
 func (s *MachineConfig) CreateDomain(userData string) error {
@@ -88,7 +88,7 @@ func (s *MachineConfig) DeleteDomain() error {
 	return nil
 }
 
-func (s *MachineConfig) createDiskFromBase(conn *libvirtClient.Connect) (string, error) {
+func (s *MachineConfig) createDiskFromBase(conn *libvirt.Connect) (string, error) {
 	basePath, err := s.getVolumePath(conn, s.BasePool, s.BaseImage)
 	if err != nil {
 		return "", err
@@ -123,7 +123,7 @@ func (s *MachineConfig) createDiskFromBase(conn *libvirtClient.Connect) (string,
 	return path, nil
 }
 
-func (s *MachineConfig) getVolumePath(conn *libvirtClient.Connect, poolName, volumeName string) (string, error) {
+func (s *MachineConfig) getVolumePath(conn *libvirt.Connect, poolName, volumeName string) (string, error) {
 	pool, err := conn.LookupStoragePoolByName(poolName)
 	if err != nil {
 		return "", fmt.Errorf("lookup pool %q: %w", poolName, err)
@@ -144,7 +144,7 @@ func (s *MachineConfig) getVolumePath(conn *libvirtClient.Connect, poolName, vol
 	return path, nil
 }
 
-func (s *MachineConfig) deleteDomain(conn *libvirtClient.Connect, name string) error {
+func (s *MachineConfig) deleteDomain(conn *libvirt.Connect, name string) error {
 	dom, err := conn.LookupDomainByName(name)
 	if err != nil {
 		return nil
@@ -167,7 +167,7 @@ func (s *MachineConfig) deleteDomain(conn *libvirtClient.Connect, name string) e
 	return nil
 }
 
-func (s *MachineConfig) deleteVolume(conn *libvirtClient.Connect, poolName, volumeName string) error {
+func (s *MachineConfig) deleteVolume(conn *libvirt.Connect, poolName, volumeName string) error {
 	pool, err := conn.LookupStoragePoolByName(poolName)
 	if err != nil {
 		return nil
