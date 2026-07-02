@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package libvirt
+package libvirtclient
 
 import (
 	"fmt"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
-	libvirtClient "libvirt.org/go/libvirt"
+	libvirt "libvirt.org/go/libvirt"
 )
 
 type InfraConfig struct {
@@ -42,8 +42,8 @@ type MachineConfig struct {
 	DiskFormat string
 }
 
-func (s *InfraConfig) connect() (*libvirtClient.Connect, error) {
-	conn, err := libvirtClient.NewConnect(s.URI)
+func (s *InfraConfig) connect() (*libvirt.Connect, error) {
+	conn, err := libvirt.NewConnect(s.URI)
 	if err != nil {
 		return nil, fmt.Errorf("connect to libvirt: %w", err)
 	}
@@ -51,7 +51,7 @@ func (s *InfraConfig) connect() (*libvirtClient.Connect, error) {
 	return conn, nil
 }
 
-func closeConn(conn *libvirtClient.Connect) {
+func closeConn(conn *libvirt.Connect) {
 	if conn != nil {
 		_, _ = conn.Close()
 	}

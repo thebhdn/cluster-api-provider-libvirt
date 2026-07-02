@@ -25,12 +25,12 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	capiutil "sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
-	libvirt "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
+	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,7 +55,7 @@ type ClusterScope struct {
 	Cluster        *clusterv1.Cluster
 	Ctx            context.Context
 	LibvirtCluster *infrav1.LibvirtCluster
-	libvirt.InfraConfig
+	libvirtclient.InfraConfig
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtclusters,verbs=get;list;watch;create;update;patch;delete
@@ -83,7 +83,7 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	clusterOwner, err := capiutil.GetOwnerCluster(ctx, r.Client, libvirtCluster.ObjectMeta)
+	clusterOwner, err := util.GetOwnerCluster(ctx, r.Client, libvirtCluster.ObjectMeta)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -164,7 +164,7 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 	scope.LibvirtCluster.Status.Ready = true
 	scope.LibvirtCluster.Status.Initialization.Provisioned = true
 
-	logger.Info("LibvirtCluster %s is provisioned", scope.LibvirtCluster.Name)
+	logger.Info("LibvirtCluster is provisioned", "cluster", scope.LibvirtCluster.Name)
 
 	return ctrl.Result{}, nil
 }
@@ -202,8 +202,8 @@ func ensureInfra(s *ClusterScope) error {
 	return nil
 }
 
-func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirt.InfraConfig {
-	return libvirt.InfraConfig{
+func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirtclient.InfraConfig {
+	return libvirtclient.InfraConfig{
 		URI:        libvirtCluster.Spec.URI,
 		BasePool:   libvirtCluster.Spec.BasePool,
 		DomainPool: libvirtCluster.Spec.DomainPool,

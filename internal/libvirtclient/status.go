@@ -14,9 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package libvirt
+package libvirtclient
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -29,25 +30,7 @@ const (
 	DomainStateUnknown  DomainState = "Unknown"
 )
 
-func (s *MachineConfig) DomainExists() (bool, error) {
-	state, err := s.getDomainState()
-	if err != nil {
-		return false, err
-	}
-
-	return state != DomainStateNotFound, nil
-}
-
-func (s *MachineConfig) IsDomainRunning() (bool, error) {
-	state, err := s.getDomainState()
-	if err != nil {
-		return false, err
-	}
-
-	return state == DomainStateRunning, nil
-}
-
-func (s *MachineConfig) getDomainState() (DomainState, error) {
+func (s *MachineConfig) GetDomainState() (DomainState, error) {
 	conn, err := s.connect()
 	if err != nil {
 		return DomainStateUnknown, err
@@ -56,20 +39,44 @@ func (s *MachineConfig) getDomainState() (DomainState, error) {
 
 	dom, err := conn.LookupDomainByName(s.domainName())
 	if err != nil {
-		return DomainStateNotFound, nil
+		if isDomainNotFound(err) {
+			return DomainStateNotFound, nil
+		}
+
+		return DomainStateUnknown, fmt.Errorf("lookup domain %q: %w", s.domainName(), err)
 	}
 	defer dom.Free()
 
-	active, err := dom.IsActive()
+	state, _, err := dom.GetState()
 	if err != nil {
-		return DomainStateUnknown, fmt.Errorf("check domain active %q: %w", s.domainName(), err)
+		return DomainStateUnknown, fmt.Errorf("get domain state %q: %w", s.domainName(), err)
 	}
 
-	if active {
+	switch state {
+	case libvirtClient.DOMAIN_RUNNING:
 		return DomainStateRunning, nil
-	}
 
-	return DomainStateStopped, nil
+	case libvirtClient.DOMAIN_SHUTOFF,
+		libvirtClient.DOMAIN_SHUTDOWN,
+		libvirtClient.DOMAIN_CRASHED:
+		return DomainStateStopped, nil
+
+	case libvirtClient.DOMAIN_PAUSED,
+		libvirtClient.DOMAIN_BLOCKED,
+		libvirtClient.DOMAIN_PMSUSPENDED:
+		return DomainStateUnknown, nil
+
+	default:
+		return DomainStateUnknown, nil
+	}
+}
+
+func isDomainNotFound(err error) bool {
+	var libvirtErr libvirtClient.Error
+	if errors.As(err, &libvirtErr) {
+		return libvirtErr.Code == libvirtClient.ERR_NO_DOMAIN
+	}
+	return false
 }
 
 func (s *InfraConfig) BasePoolExists() (bool, error) {

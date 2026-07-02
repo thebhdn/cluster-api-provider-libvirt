@@ -1,0 +1,25 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: LibvirtMachine
+metadata:
+  name: libvirt-xd-0
+  namespace: default
+spec:
+  memoryMiB: 2048
+  vcpu: 2
+  diskGiB: 20
+  image: ubuntu-noble-base.qcow2
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  name: libvirt-xd-0
+  namespace: default
+spec:
+  clusterName: libvirt-xd
+  version: v1.30.0
+  bootstrap:
+    dataSecretName: libvirt-xd-0-bootstrap
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: LibvirtMachine
+    name: libvirt-xd-0
