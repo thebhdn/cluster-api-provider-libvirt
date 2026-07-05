@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,6 +57,13 @@ type MachineScope struct {
 	libvirtclient.MachineConfig
 }
 
+const (
+	running = libvirtclient.DomainStateRunning
+	stopped = libvirtclient.DomainStateStopped
+	uknown  = libvirtclient.DomainStateUnknown
+	missing = libvirtclient.DomainStateNotFound
+)
+
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtmachines/finalizers,verbs=update
@@ -71,7 +79,6 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("libvirtMachine not found")
-
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Error happened when getting libvirtMachine")
@@ -135,7 +142,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Machine:        ownerMachine,
 		LibvirtCluster: libvirtCluster,
 		LibvirtMachine: libvirtMachine,
-		MachineConfig:  newMachineConfig(libvirtMachine),
+		MachineConfig:  newMachineConfig(libvirtMachine, libvirtCluster),
 		Ctx:            ctx,
 	}
 
@@ -222,16 +229,55 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 	}
 
 	switch state {
-	case libvirtclient.DomainStateNotFound:
+	case missing:
 		logger.Info("domain doesn't exist, creating....", "domain", scope.DomainName)
+
+		scope.LibvirtMachine.Status.Ready = false
+
+		conditions.Set(scope.LibvirtMachine, metav1.Condition{
+			Type:    infrav1.DomainProvisioningReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  infrav1.DomainProvisioningInProgressReason,
+			Message: "Domain provisioning in progress",
+		})
+
+		scope.UserData = []byte("test")
+
+		err := scope.CreateDomain()
+		if err != nil {
+			logger.Error(err, "unable to create domain", "domain", scope.DomainName)
+
+			conditions.Set(scope.LibvirtMachine, metav1.Condition{
+				Type:    infrav1.DomainProvisioningReadyCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  infrav1.DomainProvisioningFailedReason,
+				Message: fmt.Sprintf("Failed to create Domain: %v", err),
+			})
+
+			return ctrl.Result{}, err
+		}
+
+		// TODO: make it domain ID
+		providerID := "libvirt://" + scope.LibvirtMachine.Namespace + "/" + scope.LibvirtCluster.Name
+		scope.LibvirtMachine.Spec.ProviderID = &providerID
+
+		conditions.Set(scope.LibvirtMachine, metav1.Condition{
+			Type:   infrav1.MachineCreatedCondition,
+			Status: metav1.ConditionTrue,
+			Reason: infrav1.MachineCreatedCondition,
+		})
+
+		scope.LibvirtMachine.Status.Ready = true
+		scope.LibvirtMachine.Status.Initialization.Provisioned = true
+
 		return ctrl.Result{}, nil
-	case libvirtclient.DomainStateStopped:
+	case stopped:
 		logger.Info("domain stopped, starting....", "domain", scope.DomainName)
 		return ctrl.Result{}, nil
-	case libvirtclient.DomainStateRunning:
+	case running:
 		logger.Info("domain is running", "domain", scope.DomainName)
 		return ctrl.Result{}, nil
-	case libvirtclient.DomainStateUnknown:
+	case uknown:
 		logger.Info("domain state is uknown, requeuing", "domain", scope.DomainName)
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
@@ -240,14 +286,30 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 }
 
 func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Result, error) {
+	logger := log.FromContext(scope.Ctx)
+
+	logger.Info("deleting domain", "domain", scope.DomainName)
+
+	err := scope.DeleteDomain()
+	if err != nil {
+		logger.Error(err, "unable to delete domain", "domain", scope.DomainName)
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
-func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine) libvirtclient.MachineConfig {
+func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine, libvirtCluster *infrav1.LibvirtCluster) libvirtclient.MachineConfig {
 	return libvirtclient.MachineConfig{
-		BaseImage: libvirtMachine.Spec.Image,
-		MemoryMiB: uint(libvirtMachine.Spec.MemoryMiB),
-		VCPU:      uint(libvirtMachine.Spec.VCPU),
-		DiskSize:  uint64(libvirtMachine.Spec.DiskGiB),
+		InfraConfig: libvirtclient.InfraConfig{
+			URI:        libvirtCluster.Spec.URI,
+			BasePool:   libvirtCluster.Spec.BasePool,
+			DomainPool: libvirtCluster.Spec.DomainPool,
+			Network:    libvirtCluster.Spec.Network,
+		},
+		DomainName: libvirtMachine.Name,
+		BaseImage:  libvirtMachine.Spec.Image,
+		MemoryMiB:  uint(libvirtMachine.Spec.MemoryMiB),
+		VCPU:       uint(libvirtMachine.Spec.VCPU),
+		DiskSize:   uint64(libvirtMachine.Spec.DiskGiB),
 	}
 }

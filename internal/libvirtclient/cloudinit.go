@@ -18,6 +18,7 @@ package libvirtclient
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -34,15 +35,23 @@ const (
 	isoLabel         = "cidata"
 )
 
-func (s *MachineConfig) createCloudInitISO(userData string) (string, error) {
-	path := filepath.Join(os.TempDir(), s.domainName()+isoFileType)
+// TODO: move to separate package
+func (c *MachineConfig) writeCloudInitISO(dst io.Writer, userData []byte) error {
+	tmpDir, err := os.MkdirTemp("", "iso-*")
+	if err != nil {
+		return fmt.Errorf("create temporary dir for ISO file: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	isoPath := filepath.Join(tmpDir, c.isoDiskName())
 
 	const diskSize int64 = 10 * 1024 * 1024
 
-	cloudDisk, err := diskfs.Create(path, diskSize, diskfs.SectorSizeDefault)
+	cloudDisk, err := diskfs.Create(isoPath, diskSize, diskfs.SectorSizeDefault)
 	if err != nil {
-		return "", fmt.Errorf("create ISO disk: %w", err)
+		return fmt.Errorf("create ISO disk: %w", err)
 	}
+	defer cloudDisk.Close()
 
 	cloudDisk.LogicalBlocksize = 2048
 
@@ -51,50 +60,82 @@ func (s *MachineConfig) createCloudInitISO(userData string) (string, error) {
 		FSType:    filesystem.TypeISO9660,
 	})
 	if err != nil {
-		return "", fmt.Errorf("create ISO filesystem: %w", err)
+		return fmt.Errorf("create ISO filesystem: %w", err)
 	}
 
-	defer func() {
-		_ = fs.Close()
-	}()
-
-	if err := writeISOFile(fs, userDataFileName, []byte(userData)); err != nil {
-		return "", fmt.Errorf("failed to add cloud-init user-data: %w", err)
-	}
-
-	metaData := fmt.Sprintf(
+	metadata := fmt.Appendf(
+		nil,
 		"instance-id: %s\nlocal-hostname: %s\n",
-		s.domainName(),
-		s.domainName(),
+		c.domainName(),
+		c.domainName(),
 	)
 
-	if err := writeISOFile(fs, metaDataFileName, []byte(metaData)); err != nil {
-		return "", fmt.Errorf("failed to add cloud-init meta-data: %w", err)
+	flags := os.O_CREATE | os.O_WRONLY
+
+	userFile, err := fs.OpenFile(userDataFileName, flags)
+	if err != nil {
+		fs.Close()
+		return fmt.Errorf("open cloud-init user-data file: %w", err)
+	}
+
+	if _, err = userFile.Write(userData); err != nil {
+		userFile.Close()
+		fs.Close()
+		return fmt.Errorf("write cloud-init user-data: %w", err)
+	}
+
+	if err = userFile.Close(); err != nil {
+		fs.Close()
+		return fmt.Errorf("close cloud-init user-data file: %w", err)
+	}
+
+	metaFile, err := fs.OpenFile(metaDataFileName, flags)
+	if err != nil {
+		fs.Close()
+		return fmt.Errorf("open cloud-init meta-data file: %w", err)
+	}
+
+	if _, err = metaFile.Write(metadata); err != nil {
+		metaFile.Close()
+		fs.Close()
+		return fmt.Errorf("write cloud-init meta-data: %w", err)
+	}
+
+	if err = metaFile.Close(); err != nil {
+		fs.Close()
+		return fmt.Errorf("close cloud-init meta-data file: %w", err)
 	}
 
 	iso, ok := fs.(*iso9660.FileSystem)
 	if !ok {
-		return "", fmt.Errorf("not an iso9660 filesystem")
+		fs.Close()
+		return fmt.Errorf("not an iso9660 filesystem")
 	}
 
-	if err := iso.Finalize(iso9660.FinalizeOptions{
+	if err = iso.Finalize(iso9660.FinalizeOptions{
 		VolumeIdentifier: isoLabel,
 		RockRidge:        true,
 	}); err != nil {
-		return "", fmt.Errorf("finalize ISO: %w", err)
+		fs.Close()
+		return fmt.Errorf("finalize ISO: %w", err)
 	}
 
-	return path, nil
-}
+	if err = fs.Close(); err != nil {
+		return fmt.Errorf("close ISO filesystem: %w", err)
+	}
 
-func writeISOFile(fs filesystem.FileSystem, name string, data []byte) error {
-	file, err := fs.OpenFile(name, os.O_CREATE|os.O_RDWR)
+	isoFile, err := os.Open(isoPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open iso file: %w", err)
+	}
+	defer isoFile.Close()
+
+	if _, err := isoFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek ISO file: %w", err)
 	}
 
-	if _, err := file.Write(data); err != nil {
-		return err
+	if _, err := io.Copy(dst, isoFile); err != nil {
+		return fmt.Errorf("copy ISO data: %w", err)
 	}
 
 	return nil

@@ -27,3 +27,27 @@ const (
 	InfrastructureProvisioningFailedReason     = "InfrastructureProvisioningFailed"
 	InfrastructureReadyReason                  = "InfrastructureReady"
 )
+
+const (
+	// MachineCreatedCondition documents that the machine has been created.
+	MachineCreatedCondition = "MachineCreated"
+
+	// MachineNotFoundReason documents that the machine was not found.
+	MachineNotFoundReason = "MachineNotFound"
+
+	// DomainProvisioningReadyCondition documents Domain creation and provisioning status.
+	DomainProvisioningReadyCondition = "DomainProvisioningReady"
+	// DomainProvisioningInProgressReason documents that Domain provisioning is in progress.
+	DomainProvisioningInProgressReason = "DomainProvisioningInProgress"
+	// DomainProvisioningFailedReason documents that Domain provisioning has failed.
+	DomainProvisioningFailedReason = "DomainProvisioningFailed"
+	// DomainProvisioningReadyReason documents that Domain provisioning is complete.
+	DomainProvisioningReadyReason = "DomainProvisioningReady"
+
+	// DomainRunningCondition documents whether the Domain is running.
+	DomainRunningCondition = "DomainRunning"
+	// DomainRunningReason documents that the Domain is running.
+	DomainRunningReason = "DomainRunning"
+	// DomainNotRunningReason documents that the Domain is not yet running.
+	DomainNotRunningReason = "DomainNotRunning"
+)
