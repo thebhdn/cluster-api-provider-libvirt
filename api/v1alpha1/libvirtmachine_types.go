@@ -47,7 +47,7 @@ type LibvirtMachineSpec struct {
 
 // LibvirtMachineStatus defines the observed state of LibvirtMachine.
 type LibvirtMachineStatus struct {
-	// Ready indicates the VM infrastructure is ready.
+	// Ready indicates the Domain infrastructure is ready.
 	// +optional
 	Ready bool `json:"ready,omitempty"`
 

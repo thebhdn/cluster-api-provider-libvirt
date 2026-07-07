@@ -17,101 +17,223 @@ limitations under the License.
 package libvirtclient
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io"
 	"time"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirt "libvirt.org/go/libvirt"
 )
 
-func (s *MachineConfig) CreateDomain(userData string) error {
-	conn, err := s.connect()
+type InfraConfig struct {
+	URI        string
+	BasePool   string
+	DomainPool string
+	Network    string
+}
+
+type MachineConfig struct {
+	InfraConfig
+
+	DomainName string
+	BaseImage  string
+	MemoryMiB  uint
+	VCPU       uint
+	DiskSize   uint64
+	DiskFormat string
+	UserData   []byte
+}
+
+func (c *MachineConfig) CreateDomain() error {
+	conn, err := c.connect()
 	if err != nil {
 		return err
 	}
 	defer closeConn(conn)
 
-	seedPath, err := s.createCloudInitISO(userData)
+	domainPool, err := conn.LookupStoragePoolByName(c.DomainPool)
 	if err != nil {
-		return fmt.Errorf("create cloud-init ISO: %w", err)
+		return fmt.Errorf("lookup domain disk pool %s: %w", c.DomainPool, err)
 	}
+	defer domainPool.Free()
 
-	diskPath, err := s.createDiskFromBase(conn)
+	basePool, err := conn.LookupStoragePoolByName(c.BasePool)
+	if err != nil {
+		return fmt.Errorf("lookup base disk pool %s: %w", c.BasePool, err)
+	}
+	defer basePool.Free()
+
+	diskPath, err := c.createRootDisk(basePool, domainPool)
 	if err != nil {
 		return err
 	}
 
-	domainXML, err := build.NewDomain(s.domainName()).
-		WithMemoryMiB(s.memoryMiB()).
-		WithVCPU(s.vCPU()).
+	cloudISOPath, err := c.createISODisk(conn, domainPool)
+	if err != nil {
+		return err
+	}
+
+	domainXML, err := build.NewDomain(c.domainName()).
+		WithMemoryMiB(c.memoryMiB()).
+		WithVCPU(c.vCPU()).
 		WithDiskFile(diskPath).
-		WithCloudInitISO(seedPath).
-		WithNetwork(s.Network).
+		WithCloudInitISO(cloudISOPath).
+		WithNetwork(c.Network).
 		WithSerialConsole().
 		Marshal()
 	if err != nil {
 		return fmt.Errorf("marshal domain XML: %w", err)
 	}
 
-	dom, err := conn.DomainDefineXML(domainXML)
+	domain, err := conn.DomainDefineXML(domainXML)
 	if err != nil {
-		return fmt.Errorf("define domain %q: %w", s.domainName(), err)
+		return fmt.Errorf("define domain %s: %w", c.domainName(), err)
 	}
-	defer dom.Free()
+	defer domain.Free()
 
-	if err := dom.Create(); err != nil {
-		return fmt.Errorf("start domain %q: %w", s.domainName(), err)
+	if err := domain.Create(); err != nil {
+		return fmt.Errorf("create domain %s: %w", c.domainName(), err)
 	}
 
 	return nil
 }
 
-func (s *MachineConfig) DeleteDomain() error {
-	conn, err := s.connect()
+func (c *MachineConfig) DeleteDomain() error {
+	conn, err := c.connect()
 	if err != nil {
 		return err
 	}
 	defer closeConn(conn)
 
-	if err := s.deleteDomain(conn, s.domainName()); err != nil {
+	if err := deleteDomain(conn, c.domainName()); err != nil {
 		return err
 	}
 
-	if err := s.deleteVolume(conn, s.DomainPool, s.domainDiskName()); err != nil {
+	if err := deleteVolume(conn, c.DomainPool, c.domainDiskName()); err != nil {
 		return err
 	}
-
-	_ = os.Remove(filepath.Join(os.TempDir(), s.domainName()+isoFileType))
 
 	return nil
 }
 
-func (s *MachineConfig) createDiskFromBase(conn *libvirt.Connect) (string, error) {
-	basePath, err := s.getVolumePath(conn, s.BasePool, s.BaseImage)
+func (c *MachineConfig) createRootDisk(basePool, domainPool *libvirt.StoragePool) (string, error) {
+	volumePath, err := getVolumePath(domainPool, c.domainDiskName())
 	if err != nil {
 		return "", err
 	}
-
-	pool, err := conn.LookupStoragePoolByName(s.DomainPool)
-	if err != nil {
-		return "", fmt.Errorf("lookup VM disk pool %q: %w", s.DomainPool, err)
+	if volumePath != "" {
+		return volumePath, nil
 	}
-	defer pool.Free()
 
-	volumeXML, err := build.NewVolume(s.domainDiskName()).
-		WithCapacityGiB(s.diskSizeGiB()).
-		WithFormat(s.diskFormat()).
-		WithBackingStore(basePath, s.diskFormat()).
+	baseImagePath, err := getVolumePath(basePool, c.BaseImage)
+	if err != nil {
+		return "", err
+	}
+	if baseImagePath == "" {
+		return "", fmt.Errorf("base image %q not found", c.BaseImage)
+	}
+
+	volumeXML, err := build.NewVolume(c.domainDiskName()).
+		WithCapacity(c.diskSizeGiB(), "G").
+		WithBackingStore(baseImagePath, build.DefaultVolumeFormat).
 		Marshal()
 	if err != nil {
 		return "", fmt.Errorf("marshal volume XML: %w", err)
 	}
 
+	volumePath, err = createVolume(domainPool, volumeXML)
+	if err != nil {
+		return "", fmt.Errorf("create root disk: %w", err)
+	}
+
+	return volumePath, nil
+}
+
+func (c *MachineConfig) createISODisk(conn *libvirt.Connect, domainPool *libvirt.StoragePool) (string, error) {
+	volumePath, err := getVolumePath(domainPool, c.isoDiskName())
+	if err != nil {
+		return "", err
+	}
+	if volumePath != "" {
+		return volumePath, nil
+	}
+
+	var buff bytes.Buffer
+	err = c.writeCloudInitISO(&buff, c.UserData)
+	if err != nil {
+		return "", fmt.Errorf("write cloud-init iso: %w", err)
+	}
+
+	volumeXML, err := build.NewVolume(c.isoDiskName()).
+		WithCapacity(uint64(buff.Len()), "bytes").
+		WithRawType().
+		Marshal()
+	if err != nil {
+		return "", fmt.Errorf("marshal volume XML: %w", err)
+	}
+
+	volumePath, err = createVolume(domainPool, volumeXML)
+	if err != nil {
+		return "", fmt.Errorf("create cloudinit disk: %w", err)
+	}
+
+	vol, err := domainPool.LookupStorageVolByName(c.isoDiskName())
+	if err != nil {
+		return "", err
+	}
+	defer vol.Free()
+
+	if err := storageVolUpload(conn, buff, vol); err != nil {
+		return "", fmt.Errorf("upload data to volume: %w", err)
+	}
+
+	return volumePath, nil
+}
+
+func storageVolUpload(conn *libvirt.Connect, buff bytes.Buffer, vol *libvirt.StorageVol) error {
+	stream, err := conn.NewStream(0)
+	if err != nil {
+		return fmt.Errorf("create new stream: %w", err)
+	}
+	defer stream.Free()
+
+	if err := vol.Upload(stream, 0, uint64(buff.Len()), 0); err != nil {
+		return fmt.Errorf("start volume upload: %w", err)
+	}
+
+	buffReader := bytes.NewReader(buff.Bytes())
+
+	if err := stream.SendAll(func(_ *libvirt.Stream, n int) ([]byte, error) {
+		buf := make([]byte, n)
+
+		nr, readErr := buffReader.Read(buf)
+		if nr > 0 {
+			return buf[:nr], nil
+		}
+
+		if readErr == io.EOF {
+			return nil, nil
+		}
+
+		return nil, readErr
+	}); err != nil {
+		_ = stream.Abort()
+		return fmt.Errorf("send volume data: %w", err)
+	}
+
+	if err := stream.Finish(); err != nil {
+		return fmt.Errorf("finish volume upload: %w", err)
+	}
+
+	return nil
+}
+
+func createVolume(pool *libvirt.StoragePool, volumeXML string) (string, error) {
 	vol, err := pool.StorageVolCreateXML(volumeXML, 0)
 	if err != nil {
-		return "", fmt.Errorf("create VM disk volume %q: %w", s.domainDiskName(), err)
+		return "", fmt.Errorf("create disk volume: %w", err)
 	}
 	defer vol.Free()
 
@@ -123,28 +245,33 @@ func (s *MachineConfig) createDiskFromBase(conn *libvirt.Connect) (string, error
 	return path, nil
 }
 
-func (s *MachineConfig) getVolumePath(conn *libvirt.Connect, poolName, volumeName string) (string, error) {
-	pool, err := conn.LookupStoragePoolByName(poolName)
-	if err != nil {
-		return "", fmt.Errorf("lookup pool %q: %w", poolName, err)
-	}
-	defer pool.Free()
-
+func getVolumePath(pool *libvirt.StoragePool, volumeName string) (string, error) {
 	vol, err := pool.LookupStorageVolByName(volumeName)
 	if err != nil {
-		return "", fmt.Errorf("lookup volume %q in pool %q: %w", volumeName, poolName, err)
+		if isVolumeNotFound(err) {
+			return "", nil
+		}
+		return "", err
 	}
 	defer vol.Free()
 
 	path, err := vol.GetPath()
 	if err != nil {
-		return "", fmt.Errorf("get volume path for %q: %w", volumeName, err)
+		return "", fmt.Errorf("get volume path for %s: %w", volumeName, err)
 	}
 
 	return path, nil
 }
 
-func (s *MachineConfig) deleteDomain(conn *libvirt.Connect, name string) error {
+func isVolumeNotFound(err error) bool {
+	var libvirtErr libvirt.Error
+	if errors.As(err, &libvirtErr) {
+		return libvirtErr.Code == libvirt.ERR_NO_STORAGE_VOL
+	}
+	return false
+}
+
+func deleteDomain(conn *libvirt.Connect, name string) error {
 	dom, err := conn.LookupDomainByName(name)
 	if err != nil {
 		return nil
@@ -154,20 +281,20 @@ func (s *MachineConfig) deleteDomain(conn *libvirt.Connect, name string) error {
 	active, err := dom.IsActive()
 	if err == nil && active {
 		if err := dom.Destroy(); err != nil {
-			return fmt.Errorf("destroy domain %q: %w", name, err)
+			return fmt.Errorf("destroy domain %s: %w", name, err)
 		}
 
 		time.Sleep(2 * time.Second)
 	}
 
 	if err := dom.Undefine(); err != nil {
-		return fmt.Errorf("undefine domain %q: %w", name, err)
+		return fmt.Errorf("undefine domain %s: %w", name, err)
 	}
 
 	return nil
 }
 
-func (s *MachineConfig) deleteVolume(conn *libvirt.Connect, poolName, volumeName string) error {
+func deleteVolume(conn *libvirt.Connect, poolName, volumeName string) error {
 	pool, err := conn.LookupStoragePoolByName(poolName)
 	if err != nil {
 		return nil
@@ -181,8 +308,68 @@ func (s *MachineConfig) deleteVolume(conn *libvirt.Connect, poolName, volumeName
 	defer vol.Free()
 
 	if err := vol.Delete(0); err != nil {
-		return fmt.Errorf("delete volume %q from pool %q: %w", volumeName, poolName, err)
+		return fmt.Errorf("delete volume %s from pool %s: %w", volumeName, poolName, err)
 	}
 
 	return nil
+}
+
+func (c *InfraConfig) connect() (*libvirt.Connect, error) {
+	conn, err := libvirt.NewConnect(c.URI)
+	if err != nil {
+		return nil, fmt.Errorf("connect to libvirt: %w", err)
+	}
+
+	return conn, nil
+}
+
+func closeConn(conn *libvirt.Connect) {
+	if conn != nil {
+		_, _ = conn.Close()
+	}
+}
+
+func (c *MachineConfig) domainName() string {
+	return c.DomainName
+}
+
+func (c *MachineConfig) domainDiskName() string {
+	return c.DomainName + ".qcow2"
+}
+
+func (c *MachineConfig) isoDiskName() string {
+	return "cloudinit-" + c.DomainName + ".iso"
+}
+
+func (c *MachineConfig) memoryMiB() uint {
+	if c.MemoryMiB == 0 {
+		return build.DefaultMemoryMiB
+	}
+	return c.MemoryMiB
+}
+
+func (c *MachineConfig) vCPU() uint {
+	if c.VCPU == 0 {
+		return build.DefaultCPU
+	}
+	return c.VCPU
+}
+
+func (c *MachineConfig) diskSizeGiB() uint64 {
+	if c.DiskSize == 0 {
+		return build.DefaultVolumeCapacityGiB
+	}
+	return c.DiskSize
+}
+
+func (c *InfraConfig) networkName() string {
+	return c.Network
+}
+
+func (c *InfraConfig) basePoolName() string {
+	return c.BasePool
+}
+
+func (c *InfraConfig) domainPoolName() string {
+	return c.DomainPool
 }

@@ -19,6 +19,8 @@ package libvirtclient
 import (
 	"errors"
 	"fmt"
+
+	"libvirt.org/go/libvirt"
 )
 
 type DomainState string
@@ -30,40 +32,40 @@ const (
 	DomainStateUnknown  DomainState = "Unknown"
 )
 
-func (s *MachineConfig) GetDomainState() (DomainState, error) {
-	conn, err := s.connect()
+func (c *MachineConfig) GetDomainState() (DomainState, error) {
+	conn, err := c.connect()
 	if err != nil {
 		return DomainStateUnknown, err
 	}
 	defer closeConn(conn)
 
-	dom, err := conn.LookupDomainByName(s.domainName())
+	dom, err := conn.LookupDomainByName(c.domainName())
 	if err != nil {
 		if isDomainNotFound(err) {
 			return DomainStateNotFound, nil
 		}
 
-		return DomainStateUnknown, fmt.Errorf("lookup domain %q: %w", s.domainName(), err)
+		return DomainStateUnknown, fmt.Errorf("lookup domain %q: %w", c.domainName(), err)
 	}
 	defer dom.Free()
 
 	state, _, err := dom.GetState()
 	if err != nil {
-		return DomainStateUnknown, fmt.Errorf("get domain state %q: %w", s.domainName(), err)
+		return DomainStateUnknown, fmt.Errorf("get domain state %q: %w", c.domainName(), err)
 	}
 
 	switch state {
-	case libvirtClient.DOMAIN_RUNNING:
+	case libvirt.DOMAIN_RUNNING:
 		return DomainStateRunning, nil
 
-	case libvirtClient.DOMAIN_SHUTOFF,
-		libvirtClient.DOMAIN_SHUTDOWN,
-		libvirtClient.DOMAIN_CRASHED:
+	case libvirt.DOMAIN_SHUTOFF,
+		libvirt.DOMAIN_SHUTDOWN,
+		libvirt.DOMAIN_CRASHED:
 		return DomainStateStopped, nil
 
-	case libvirtClient.DOMAIN_PAUSED,
-		libvirtClient.DOMAIN_BLOCKED,
-		libvirtClient.DOMAIN_PMSUSPENDED:
+	case libvirt.DOMAIN_PAUSED,
+		libvirt.DOMAIN_BLOCKED,
+		libvirt.DOMAIN_PMSUSPENDED:
 		return DomainStateUnknown, nil
 
 	default:
@@ -72,29 +74,29 @@ func (s *MachineConfig) GetDomainState() (DomainState, error) {
 }
 
 func isDomainNotFound(err error) bool {
-	var libvirtErr libvirtClient.Error
+	var libvirtErr libvirt.Error
 	if errors.As(err, &libvirtErr) {
-		return libvirtErr.Code == libvirtClient.ERR_NO_DOMAIN
+		return libvirtErr.Code == libvirt.ERR_NO_DOMAIN
 	}
 	return false
 }
 
-func (s *InfraConfig) BasePoolExists() (bool, error) {
-	return s.storagePoolExists(s.basePoolName())
+func (c *InfraConfig) BasePoolExists() (bool, error) {
+	return c.storagePoolExists(c.basePoolName())
 }
 
-func (s *InfraConfig) VMStoragePoolExists() (bool, error) {
-	return s.storagePoolExists(s.domainPoolName())
+func (c *InfraConfig) VMStoragePoolExists() (bool, error) {
+	return c.storagePoolExists(c.domainPoolName())
 }
 
-func (s *MachineConfig) NetworkExists() (bool, error) {
-	conn, err := s.connect()
+func (c *MachineConfig) NetworkExists() (bool, error) {
+	conn, err := c.connect()
 	if err != nil {
 		return false, err
 	}
 	defer closeConn(conn)
 
-	net, err := conn.LookupNetworkByName(s.networkName())
+	net, err := conn.LookupNetworkByName(c.networkName())
 	if err != nil {
 		return false, nil
 	}
@@ -103,8 +105,8 @@ func (s *MachineConfig) NetworkExists() (bool, error) {
 	return true, nil
 }
 
-func (s *InfraConfig) storagePoolExists(name string) (bool, error) {
-	conn, err := s.connect()
+func (c *InfraConfig) storagePoolExists(name string) (bool, error) {
+	conn, err := c.connect()
 	if err != nil {
 		return false, err
 	}

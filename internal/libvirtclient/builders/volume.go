@@ -22,6 +22,7 @@ const (
 	DefaultVolumeCapacityGiB  = uint64(20)
 	DefaultVolumeCapacityUnit = "G"
 	DefaultVolumeFormat       = "qcow2"
+	RawVolumeFormat           = "raw"
 )
 
 type VolumeBuilder struct {
@@ -45,26 +46,18 @@ func NewVolume(name string) *VolumeBuilder {
 	}
 }
 
-func (b *VolumeBuilder) WithCapacityGiB(size uint64) *VolumeBuilder {
-	b.volume.Capacity.Value = size
-	b.volume.Capacity.Unit = DefaultVolumeCapacityUnit
+func (b *VolumeBuilder) WithRawType() *VolumeBuilder {
+	b.volume.Target.Format.Type = RawVolumeFormat
 	return b
 }
 
-func (b *VolumeBuilder) WithFormat(format string) *VolumeBuilder {
-	if format == "" {
-		format = DefaultVolumeFormat
-	}
-
-	b.volume.Target.Format.Type = format
+func (b *VolumeBuilder) WithCapacity(size uint64, unit string) *VolumeBuilder {
+	b.volume.Capacity.Value = size
+	b.volume.Capacity.Unit = unit
 	return b
 }
 
 func (b *VolumeBuilder) WithBackingStore(path, format string) *VolumeBuilder {
-	if format == "" {
-		format = DefaultVolumeFormat
-	}
-
 	b.volume.BackingStore = &libvirtxml.StorageVolumeBackingStore{
 		Path: path,
 		Format: &libvirtxml.StorageVolumeTargetFormat{

@@ -73,7 +73,6 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("libvirtCluster not found", "cluster-name", req.Name, "cluster-namespace", req.Namespace)
-
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Error happened when getting libvirt-cluster",
@@ -174,29 +173,29 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 // }
 
 // TODO: make cluster controller manage libvirt infra
-func ensureInfra(s *ClusterScope) error {
-	netActive, err := s.IsNetworkActive()
+func ensureInfra(scope *ClusterScope) error {
+	netActive, err := scope.IsNetworkActive()
 	if err != nil {
-		return fmt.Errorf("error checking libvirt network %q: %w", s.Network, err)
+		return fmt.Errorf("error checking libvirt network %q: %w", scope.Network, err)
 	}
 	if !netActive {
-		return fmt.Errorf("network %q is not active", s.Network)
+		return fmt.Errorf("network %q is not active", scope.Network)
 	}
 
-	baseStoragePool, err := s.BasePoolExists()
+	baseStoragePool, err := scope.BasePoolExists()
 	if err != nil {
-		return fmt.Errorf("error checking base storage pool %q: %w", s.BasePool, err)
+		return fmt.Errorf("error checking base storage pool %q: %w", scope.BasePool, err)
 	}
 	if !baseStoragePool {
-		return fmt.Errorf("base storage pool %q is not active", s.BasePool)
+		return fmt.Errorf("base storage pool %q is not active", scope.BasePool)
 	}
 
-	vmStoragePool, err := s.VMStoragePoolExists()
+	vmStoragePool, err := scope.VMStoragePoolExists()
 	if err != nil {
-		return fmt.Errorf("error checking vm storage pool %q: %w", s.BasePool, err)
+		return fmt.Errorf("error checking vm storage pool %q: %w", scope.BasePool, err)
 	}
 	if !vmStoragePool {
-		return fmt.Errorf("base vm pool %q is not active", s.BasePool)
+		return fmt.Errorf("base vm pool %q is not active", scope.BasePool)
 	}
 
 	return nil

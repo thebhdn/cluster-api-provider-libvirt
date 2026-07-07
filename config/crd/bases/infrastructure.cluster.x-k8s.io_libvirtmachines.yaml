@@ -153,7 +153,7 @@ spec:
                     type: boolean
                 type: object
               ready:
-                description: Ready indicates the VM infrastructure is ready.
+                description: Ready indicates the Domain infrastructure is ready.
                 type: boolean
             type: object
         required:
