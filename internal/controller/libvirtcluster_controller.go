@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -48,6 +47,8 @@ const (
 type LibvirtClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	InfraProvider infraProvider
 }
 
 // ClusterScope is a struct that contains the necessary data needed for a LibvirtCluster controller
@@ -55,7 +56,7 @@ type ClusterScope struct {
 	Cluster        *clusterv1.Cluster
 	Ctx            context.Context
 	LibvirtCluster *infrav1.LibvirtCluster
-	libvirtclient.InfraConfig
+	InfraConfig    libvirtclient.InfraConfig
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=libvirtclusters,verbs=get;list;watch;create;update;patch;delete
@@ -139,8 +140,7 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 		Message: "Infrastructure provisioning in progress",
 	})
 
-	// TODO: trigger check based on set conditions
-	if err := ensureInfra(scope); err != nil {
+	if err := r.InfraProvider.EnsureInfra(scope.InfraConfig); err != nil {
 		logger.Error(err, "could not verify libvirt infrastructure, requeuing....")
 
 		conditions.Set(scope.LibvirtCluster, v1.Condition{
@@ -171,35 +171,6 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 // func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
 // 	return ctrl.Result{}, nil
 // }
-
-// TODO: make cluster controller manage libvirt infra
-func ensureInfra(scope *ClusterScope) error {
-	netActive, err := scope.IsNetworkActive()
-	if err != nil {
-		return fmt.Errorf("error checking libvirt network %q: %w", scope.Network, err)
-	}
-	if !netActive {
-		return fmt.Errorf("network %q is not active", scope.Network)
-	}
-
-	baseStoragePool, err := scope.BasePoolExists()
-	if err != nil {
-		return fmt.Errorf("error checking base storage pool %q: %w", scope.BasePool, err)
-	}
-	if !baseStoragePool {
-		return fmt.Errorf("base storage pool %q is not active", scope.BasePool)
-	}
-
-	vmStoragePool, err := scope.VMStoragePoolExists()
-	if err != nil {
-		return fmt.Errorf("error checking vm storage pool %q: %w", scope.BasePool, err)
-	}
-	if !vmStoragePool {
-		return fmt.Errorf("base vm pool %q is not active", scope.BasePool)
-	}
-
-	return nil
-}
 
 func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirtclient.InfraConfig {
 	return libvirtclient.InfraConfig{

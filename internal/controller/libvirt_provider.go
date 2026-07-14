@@ -1,0 +1,37 @@
+/*
+Copyright 2026 Bohdan Leshchenko.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
+)
+
+type infraProvider interface {
+	EnsureInfra(cfg libvirtclient.InfraConfig) error
+}
+
+type machineProvider interface {
+	GetMachineState(cfg libvirtclient.MachineConfig) (libvirtclient.DomainState, error)
+	CreateMachine(cfg libvirtclient.MachineConfig) error
+	StartMachine(cfg libvirtclient.MachineConfig) error
+	DeleteMachine(cfg libvirtclient.MachineConfig) error
+}
+
+var (
+	_ infraProvider   = &libvirtclient.Provider{}
+	_ machineProvider = &libvirtclient.Provider{}
+)

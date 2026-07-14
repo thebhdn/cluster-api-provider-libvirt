@@ -46,6 +46,8 @@ import (
 type LibvirtMachineReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	MachineProvider machineProvider
 }
 
 type MachineScope struct {
@@ -54,7 +56,7 @@ type MachineScope struct {
 	Ctx            context.Context
 	LibvirtCluster *infrav1.LibvirtCluster
 	LibvirtMachine *infrav1.LibvirtMachine
-	libvirtclient.MachineConfig
+	MachineConfig  libvirtclient.MachineConfig
 }
 
 const (
@@ -178,6 +180,8 @@ func (r *LibvirtMachineReconciler) SetupWithManager(ctx context.Context, mgr ctr
 func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Result, error) {
 	logger := log.FromContext(scope.Ctx)
 
+	cfg := scope.MachineConfig
+
 	if annotations.IsPaused(scope.Cluster, scope.LibvirtMachine) {
 		logger.Info("Reconciliation is paused for this object")
 
@@ -222,7 +226,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		Message: "Cluster infrastructure is ready",
 	})
 
-	state, err := scope.GetDomainState()
+	state, err := r.MachineProvider.GetMachineState(cfg)
 	if err != nil {
 		logger.Error(err, "unable to get domain state")
 		return ctrl.Result{}, err
@@ -230,7 +234,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 	switch state {
 	case missing:
-		logger.Info("domain doesn't exist, creating....", "domain", scope.DomainName)
+		logger.Info("domain doesn't exist, creating....", "domain", cfg.DomainName)
 
 		scope.LibvirtMachine.Status.Ready = false
 
@@ -241,11 +245,11 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			Message: "Domain provisioning in progress",
 		})
 
-		scope.UserData = []byte("test")
+		cfg.UserData = []byte("test")
 
-		err := scope.CreateDomain()
+		err := r.MachineProvider.CreateMachine(cfg)
 		if err != nil {
-			logger.Error(err, "unable to create domain", "domain", scope.DomainName)
+			logger.Error(err, "unable to create domain", "domain", cfg.DomainName)
 
 			conditions.Set(scope.LibvirtMachine, metav1.Condition{
 				Type:    infrav1.DomainProvisioningReadyCondition,
@@ -272,13 +276,13 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		return ctrl.Result{}, nil
 	case stopped:
-		logger.Info("domain stopped, starting....", "domain", scope.DomainName)
+		logger.Info("domain stopped, starting....", "domain", cfg.DomainName)
 		return ctrl.Result{}, nil
 	case running:
-		logger.Info("domain is running", "domain", scope.DomainName)
+		logger.Info("domain is running", "domain", cfg.DomainName)
 		return ctrl.Result{}, nil
 	case uknown:
-		logger.Info("domain state is uknown, requeuing", "domain", scope.DomainName)
+		logger.Info("domain state is uknown, requeuing", "domain", cfg.DomainName)
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
@@ -288,11 +292,13 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Result, error) {
 	logger := log.FromContext(scope.Ctx)
 
-	logger.Info("deleting domain", "domain", scope.DomainName)
+	cfg := scope.MachineConfig
 
-	err := scope.DeleteDomain()
+	logger.Info("deleting domain", "domain", cfg.DomainName)
+
+	err := r.MachineProvider.DeleteMachine(cfg)
 	if err != nil {
-		logger.Error(err, "unable to delete domain", "domain", scope.DomainName)
+		logger.Error(err, "unable to delete domain", "domain", cfg)
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil

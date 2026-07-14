@@ -35,15 +35,14 @@ const (
 	isoLabel         = "cidata"
 )
 
-// TODO: move to separate package
-func (c *MachineConfig) writeCloudInitISO(dst io.Writer, userData []byte) error {
+func writeCloudInitISO(dst io.Writer, cfg MachineConfig) error {
 	tmpDir, err := os.MkdirTemp("", "iso-*")
 	if err != nil {
 		return fmt.Errorf("create temporary dir for ISO file: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	isoPath := filepath.Join(tmpDir, c.isoDiskName())
+	isoPath := filepath.Join(tmpDir, cfg.isoDiskName())
 
 	const diskSize int64 = 10 * 1024 * 1024
 
@@ -66,8 +65,8 @@ func (c *MachineConfig) writeCloudInitISO(dst io.Writer, userData []byte) error 
 	metadata := fmt.Appendf(
 		nil,
 		"instance-id: %s\nlocal-hostname: %s\n",
-		c.domainName(),
-		c.domainName(),
+		cfg.domainName(),
+		cfg.domainName(),
 	)
 
 	flags := os.O_CREATE | os.O_WRONLY
@@ -78,7 +77,7 @@ func (c *MachineConfig) writeCloudInitISO(dst io.Writer, userData []byte) error 
 		return fmt.Errorf("open cloud-init user-data file: %w", err)
 	}
 
-	if _, err = userFile.Write(userData); err != nil {
+	if _, err = userFile.Write(cfg.UserData); err != nil {
 		userFile.Close()
 		fs.Close()
 		return fmt.Errorf("write cloud-init user-data: %w", err)
