@@ -37,6 +37,7 @@ import (
 
 	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/controller"
+	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	// +kubebuilder:scaffold:imports
 )
@@ -149,16 +150,20 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
+	provider := libvirtclient.NewProvider()
+
 	if err := (&controller.LibvirtClusterReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		InfraProvider: provider,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "libvirtcluster")
 		os.Exit(1)
 	}
 	if err := (&controller.LibvirtMachineReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		MachineProvider: provider,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "libvirtmachine")
 		os.Exit(1)
