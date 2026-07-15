@@ -80,7 +80,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Get(ctx, req.NamespacedName, libvirtMachine)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.Info("libvirtMachine not found")
+			logger.Info("LibvirtMachine not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Error happened when getting libvirtMachine")
@@ -95,7 +95,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	defer func() {
 		if patchErr := helper.Patch(ctx, libvirtMachine); patchErr != nil {
-			logger.Error(patchErr, "unable to patch", "machine", client.ObjectKeyFromObject(libvirtMachine).String())
+			logger.Error(patchErr, "Unable to patch", "machine", client.ObjectKeyFromObject(libvirtMachine).String())
 			if rerr == nil {
 				rerr = patchErr
 			}
@@ -104,12 +104,12 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	ownerMachine, err := util.GetOwnerMachine(ctx, r.Client, libvirtMachine.ObjectMeta)
 	if err != nil {
-		logger.Error(err, "unable to get owner machine")
+		logger.Error(err, "Unable to get owner machine")
 		return ctrl.Result{}, err
 	}
 
 	if ownerMachine == nil {
-		logger.Info("waiting for machine controller to set OwnerRef on LibvirtMachine")
+		logger.Info("Waiting for machine controller to set OwnerRef on LibvirtMachine")
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
@@ -135,7 +135,7 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	err = r.Get(ctx, libvirtClusterKey, libvirtCluster)
 	if err != nil {
-		logger.Error(err, "unable to find corresponding libvirtCluster to libvirtMachine")
+		logger.Error(err, "Unable to find corresponding libvirtCluster to libvirtMachine")
 		return ctrl.Result{}, err
 	}
 
@@ -228,7 +228,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 	state, err := r.MachineProvider.GetMachineState(cfg)
 	if err != nil {
-		logger.Error(err, "unable to get domain state")
+		logger.Error(err, "Unable to get domain state")
 		return ctrl.Result{}, err
 	}
 
@@ -237,6 +237,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		logger.Info("domain doesn't exist, creating....", "domain", cfg.DomainName)
 
 		scope.LibvirtMachine.Status.Ready = false
+		scope.LibvirtMachine.Status.Initialization.Provisioned = false
 
 		conditions.Set(scope.LibvirtMachine, metav1.Condition{
 			Type:    infrav1.DomainProvisioningReadyCondition,
@@ -249,7 +250,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		err := r.MachineProvider.CreateMachine(cfg)
 		if err != nil {
-			logger.Error(err, "unable to create domain", "domain", cfg.DomainName)
+			logger.Error(err, "Unable to create domain", "domain", cfg.DomainName)
 
 			conditions.Set(scope.LibvirtMachine, metav1.Condition{
 				Type:    infrav1.DomainProvisioningReadyCondition,
@@ -276,13 +277,31 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		return ctrl.Result{}, nil
 	case stopped:
-		logger.Info("domain stopped, starting....", "domain", cfg.DomainName)
+		logger.Info("Domain stopped, starting....", "domain", cfg.DomainName)
+
+		scope.LibvirtMachine.Status.Ready = false
+
+		if err := r.MachineProvider.StartMachine(cfg); err != nil {
+			logger.Error(err, "Unable to start domain", "domain", cfg.DomainName)
+
+			conditions.Set(scope.LibvirtMachine, metav1.Condition{
+				Type:    infrav1.DomainRunningCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  infrav1.DomainNotRunningReason,
+				Message: fmt.Sprintf("Failed start Domain: %v", err),
+			})
+
+			scope.LibvirtMachine.Status.Ready = false
+
+			return ctrl.Result{}, err
+		}
+
 		return ctrl.Result{}, nil
 	case running:
-		logger.Info("domain is running", "domain", cfg.DomainName)
+		logger.Info("Domain is running", "domain", cfg.DomainName)
 		return ctrl.Result{}, nil
 	case uknown:
-		logger.Info("domain state is uknown, requeuing", "domain", cfg.DomainName)
+		logger.Info("Domain state is uknown, requeuing", "domain", cfg.DomainName)
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
@@ -294,13 +313,21 @@ func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Re
 
 	cfg := scope.MachineConfig
 
-	logger.Info("deleting domain", "domain", cfg.DomainName)
+	logger.Info("Deleting domain", "domain", cfg.DomainName)
 
 	err := r.MachineProvider.DeleteMachine(cfg)
 	if err != nil {
-		logger.Error(err, "unable to delete domain", "domain", cfg)
+		logger.Error(err, "Unable to delete domain", "domain", cfg)
 		return ctrl.Result{}, err
 	}
+
+	if ok := controllerutil.RemoveFinalizer(scope.LibvirtMachine, infrav1.LibvirtMachineFinalizer); !ok {
+		return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from LibvirtMachine  %s/%s",
+			infrav1.LibvirtMachineFinalizer,
+			scope.Machine.Namespace,
+			scope.Machine.Name)
+	}
+
 	return ctrl.Result{}, nil
 }
 

@@ -58,6 +58,21 @@ func (p *Provider) CreateMachine(cfg MachineConfig) error {
 }
 
 func (p *Provider) StartMachine(cfg MachineConfig) error {
+	conn, err := connect(cfg.getURI())
+	if err != nil {
+		return fmt.Errorf("connect to libvirt host: %w", err)
+	}
+	defer conn.Close()
+
+	domain, err := conn.LookupDomainByName(cfg.DomainName)
+	if err != nil {
+		return fmt.Errorf("lookup domain %s: %w", cfg.DomainName, err)
+	}
+
+	if err := domain.Create(); err != nil {
+		return fmt.Errorf("start domain %s: %w", cfg.DomainName, err)
+	}
+
 	return nil
 }
 
