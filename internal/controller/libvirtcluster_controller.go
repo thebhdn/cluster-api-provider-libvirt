@@ -114,6 +114,10 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		InfraConfig:    newInfraConfig(libvirtCluster),
 	}
 
+	if !libvirtCluster.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(scope)
+	}
+
 	return r.reconcileNormal(scope)
 }
 
@@ -168,9 +172,18 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-// func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
-// 	return ctrl.Result{}, nil
-// }
+func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
+	logger := log.FromContext(scope.Ctx)
+
+	logger.Info("Removing finalizer from LibvirtCluster ...",
+		"cluster-name", scope.LibvirtCluster.Name,
+		"cluster-namespace", scope.LibvirtCluster.Namespace)
+
+	controllerutil.RemoveFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer)
+	controllerutil.RemoveFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer)
+
+	return ctrl.Result{}, nil
+}
 
 func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirtclient.InfraConfig {
 	return libvirtclient.InfraConfig{

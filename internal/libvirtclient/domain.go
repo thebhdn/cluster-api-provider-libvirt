@@ -18,7 +18,6 @@ package libvirtclient
 
 import (
 	"fmt"
-	"time"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirt "libvirt.org/go/libvirt"
@@ -74,6 +73,10 @@ func createDomain(conn *libvirt.Connect, cfg MachineConfig) error {
 	}
 	defer domain.Free()
 
+	if err := domain.SetAutostart(true); err != nil {
+		return fmt.Errorf("set domain autostart: %w", err)
+	}
+
 	if err := domain.Create(); err != nil {
 		return fmt.Errorf("create domain %s: %w", cfg.domainName(), err)
 	}
@@ -111,8 +114,6 @@ func deleteDomain(conn *libvirt.Connect, name string) error {
 		if err := dom.Destroy(); err != nil {
 			return fmt.Errorf("destroy domain %s: %w", name, err)
 		}
-
-		time.Sleep(2 * time.Second)
 	}
 
 	if err := dom.Undefine(); err != nil {
