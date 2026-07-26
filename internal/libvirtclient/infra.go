@@ -140,6 +140,6 @@ func isStoragePoolActive(conn *libvirt.Connect, name string) (bool, error) {
 }
 
 func isLibvirtErr(err error, code libvirt.ErrorNumber) bool {
-	var libvirtErr libvirt.Error
+	var libvirtErr *libvirt.Error
 	return errors.As(err, &libvirtErr) && libvirtErr.Code == code
 }
