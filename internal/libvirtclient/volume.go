@@ -156,7 +156,7 @@ func getVolumePath(pool *libvirt.StoragePool, volumeName string) (string, error)
 }
 
 func isVolumeNotFound(err error) bool {
-	var libvirtErr libvirt.Error
+	var libvirtErr *libvirt.Error
 	if errors.As(err, &libvirtErr) {
 		return libvirtErr.Code == libvirt.ERR_NO_STORAGE_VOL
 	}
