@@ -292,16 +292,35 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			})
 
 			scope.LibvirtMachine.Status.Ready = false
+			scope.LibvirtMachine.Status.Initialization.Provisioned = false
 
 			return ctrl.Result{}, err
 		}
 
+		scope.LibvirtMachine.Status.Ready = false
+		scope.LibvirtMachine.Status.Initialization.Provisioned = true
+
 		return ctrl.Result{}, nil
 	case running:
 		logger.Info("Domain is running", "domain", cfg.DomainName)
+
+		conditions.Set(scope.LibvirtMachine, metav1.Condition{
+			Type:    infrav1.DomainRunningCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  infrav1.DomainRunningCondition,
+			Message: "Domain is running",
+		})
+
+		scope.LibvirtMachine.Status.Ready = true
+		scope.LibvirtMachine.Status.Initialization.Provisioned = true
+
 		return ctrl.Result{}, nil
 	case uknown:
 		logger.Info("Domain state is uknown, requeuing", "domain", cfg.DomainName)
+
+		scope.LibvirtMachine.Status.Ready = false
+		scope.LibvirtMachine.Status.Initialization.Provisioned = false
+
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 

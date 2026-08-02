@@ -18,67 +18,161 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 var _ = Describe("LibvirtCluster Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+	const (
+		resourceName  = "test-cluster"
+		testNamespace = "default"
+	)
 
-		ctx := context.Background()
+	var (
+		ctx            context.Context
+		namespacedName types.NamespacedName
+		cluster        *infrastructurev1alpha1.LibvirtCluster
+	)
 
-		typeNamespacedName := types.NamespacedName{
+	BeforeEach(func() {
+		ctx = context.Background()
+		namespacedName = types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: testNamespace,
 		}
-		libvirtcluster := &infrastructurev1alpha1.LibvirtCluster{}
 
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind LibvirtCluster")
-			err := k8sClient.Get(ctx, typeNamespacedName, libvirtcluster)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &infrastructurev1alpha1.LibvirtCluster{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
+		// Create the LibvirtCluster directly — no CAPI owner required
+		cluster = &infrastructurev1alpha1.LibvirtCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       resourceName,
+				Namespace:  testNamespace,
+				Finalizers: []string{infrastructurev1alpha1.LibvirtClusterFinalizer},
+			},
+			Spec: infrastructurev1alpha1.LibvirtClusterSpec{
+				ControlPlaneEndpoint: clusterv1.APIEndpoint{
+					Host: "localhost",
+					Port: 6443,
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, cluster)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		toDelete := &infrastructurev1alpha1.LibvirtCluster{}
+		err := k8sClient.Get(ctx, namespacedName, toDelete)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		// Force-remove finalizer so Delete works without a controller
+		if err := k8sClient.Get(ctx, namespacedName, toDelete); err != nil {
+			if apierrors.IsNotFound(err) {
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+		}
+		toDelete.Finalizers = nil
+		Expect(k8sClient.Update(ctx, toDelete)).To(Succeed())
+
+		Expect(k8sClient.Delete(ctx, toDelete)).To(Succeed())
+		Eventually(func() error {
+			obj := &infrastructurev1alpha1.LibvirtCluster{}
+			return k8sClient.Get(ctx, namespacedName, obj)
+		}, "5s", "200ms").ShouldNot(Succeed())
+	})
+
+	DescribeTable(
+		"reconciliation with mock provider",
+		func(mockErr error, expectReady bool, expectProvisioned bool) {
+			By("calling reconcileNormal")
+			// Reconcile the LibvirtCluster
+			updated := &infrastructurev1alpha1.LibvirtCluster{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, namespacedName, updated) == nil
+			}, "10s", "1s").Should(BeTrue())
+
+			// Construct a ClusterScope for direct reconcileNormal call
+			scope := &ClusterScope{
+				Cluster:        &clusterv1.Cluster{}, // minimal; reconcileNormal doesn't use it
+				LibvirtCluster: updated,
+				InfraConfig:    newInfraConfig(updated),
+				Ctx:            ctx,
+			}
+
+			// Create reconciler with mock provider
+			reconciler := &LibvirtClusterReconciler{
+				Client:        k8sClient,
+				Scheme:        k8sClient.Scheme(),
+				InfraProvider: &MockInfraProvider{},
+			}
+			reconciler.InfraProvider.(*MockInfraProvider).SetEnsureInfraErr(mockErr)
+
+			// Call reconcileNormal directly (bypasses owner-check in Reconcile entry point)
+			result, err := reconciler.reconcileNormal(scope)
+			Expect(err).NotTo(HaveOccurred())
+			if expectReady {
+				Expect(result.RequeueAfter).To(BeZero(), "reconcileNormal should not request requeue on success")
+			} else {
+				Expect(result.RequeueAfter).To(Equal(requeueTimeShort), "reconcileNormal should requeue on EnsureInfra failure")
+			}
+
+			// Verify status was updated via the patch helper
+			Expect(updated.Status.Ready).To(Equal(expectReady), "status.ready mismatch")
+			Expect(updated.Status.Initialization.Provisioned).To(Equal(expectProvisioned), "status.initialization.provisioned mismatch")
+
+			// Verify condition was set
+			if expectReady {
+				Expect(updated.Status.Conditions).NotTo(BeEmpty())
+				found := false
+				for _, c := range updated.Status.Conditions {
+					if c.Type == infrastructurev1alpha1.InfrastructureReadyCondition {
+						Expect(c.Status).To(Equal(metav1.ConditionTrue))
+						found = true
+					}
 				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(found).To(BeTrue(), "InfrastructureReady condition should be True")
 			}
-		})
+		},
+		Entry("EnsureInfra success -> ready and provisioned", nil, true, true),
+		Entry("EnsureInfra error -> not ready and not provisioned", errors.New("mock ensure infra failure"), false, false),
+	)
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &infrastructurev1alpha1.LibvirtCluster{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+	It("should handle deletion correctly", func() {
+		By("calling reconcileDelete")
+		updated := &infrastructurev1alpha1.LibvirtCluster{}
+		Expect(k8sClient.Get(ctx, namespacedName, updated)).To(Succeed())
 
-			By("Cleanup the specific resource instance LibvirtCluster")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &LibvirtClusterReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+		// Construct a ClusterScope for direct reconcileDelete call
+		scope := &ClusterScope{
+			Cluster:        &clusterv1.Cluster{},
+			LibvirtCluster: updated,
+			Ctx:            ctx,
+			InfraConfig:    newInfraConfig(updated),
+		}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
-		})
+		// Create reconciler with mock provider
+		reconciler := &LibvirtClusterReconciler{
+			Client:        k8sClient,
+			Scheme:        k8sClient.Scheme(),
+			InfraProvider: &MockInfraProvider{},
+		}
+
+		// Call reconcileDelete directly (bypasses owner-check in Reconcile entry point)
+		result, err := reconciler.reconcileDelete(scope)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(BeZero())
 	})
 })
