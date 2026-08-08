@@ -18,6 +18,7 @@ package libvirtclient
 
 import (
 	"fmt"
+	"strconv"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirt "libvirt.org/go/libvirt"
@@ -32,27 +33,31 @@ const (
 	DomainStateUnknown  DomainState = "Unknown"
 )
 
-func createDomain(conn *libvirt.Connect, cfg MachineConfig) error {
+type DomainInfo struct {
+	ID string
+}
+
+func createDomain(conn *libvirt.Connect, cfg MachineConfig) (DomainInfo, error) {
 	domainPool, err := conn.LookupStoragePoolByName(cfg.DomainPool)
 	if err != nil {
-		return fmt.Errorf("lookup domain disk pool %s: %w", cfg.DomainPool, err)
+		return DomainInfo{}, fmt.Errorf("lookup domain disk pool %s: %w", cfg.DomainPool, err)
 	}
 	defer domainPool.Free()
 
 	basePool, err := conn.LookupStoragePoolByName(cfg.BasePool)
 	if err != nil {
-		return fmt.Errorf("lookup base disk pool %s: %w", cfg.BasePool, err)
+		return DomainInfo{}, fmt.Errorf("lookup base disk pool %s: %w", cfg.BasePool, err)
 	}
 	defer basePool.Free()
 
 	diskPath, err := createRootDisk(basePool, domainPool, cfg)
 	if err != nil {
-		return err
+		return DomainInfo{}, fmt.Errorf("create base disk pool %s: %w", cfg.BasePool, err)
 	}
 
 	cloudISOPath, err := createISODisk(conn, domainPool, cfg)
 	if err != nil {
-		return err
+		return DomainInfo{}, fmt.Errorf("create iso disk %s: %w", cfg.BasePool, err)
 	}
 
 	domainXML, err := build.NewDomain(cfg.domainName()).
@@ -64,43 +69,33 @@ func createDomain(conn *libvirt.Connect, cfg MachineConfig) error {
 		WithSerialConsole().
 		Marshal()
 	if err != nil {
-		return fmt.Errorf("marshal domain XML: %w", err)
+		return DomainInfo{}, fmt.Errorf("marshal domain XML: %w", err)
 	}
 
 	domain, err := conn.DomainDefineXML(domainXML)
 	if err != nil {
-		return fmt.Errorf("define domain %s: %w", cfg.domainName(), err)
+		return DomainInfo{}, fmt.Errorf("define domain %s: %w", cfg.domainName(), err)
 	}
 	defer domain.Free()
 
 	if err := domain.SetAutostart(true); err != nil {
-		return fmt.Errorf("set domain autostart: %w", err)
+		return DomainInfo{}, fmt.Errorf("set domain autostart: %w", err)
 	}
 
 	if err := domain.Create(); err != nil {
-		return fmt.Errorf("create domain %s: %w", cfg.domainName(), err)
+		return DomainInfo{}, fmt.Errorf("create domain %s: %w", cfg.domainName(), err)
 	}
 
-	return nil
-}
+	domainInfo := DomainInfo{}
+	id, err := domain.GetID()
+	if err != nil {
+		return DomainInfo{}, fmt.Errorf("failed to get %s id: %w", cfg.domainName(), err)
+	}
 
-// func deleteDomain(conn *libvirt.Connect, cfg MachineConfig) error {
-// 	conn, err := connect()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer closeConn(conn)
-//
-// 	if err := deleteDomain(conn, c.domainName()); err != nil {
-// 		return err
-// 	}
-//
-// 	if err := deleteVolume(conn, c.DomainPool, c.domainDiskName()); err != nil {
-// 		return err
-// 	}
-//
-// 	return nil
-// }
+	domainInfo.ID = strconv.FormatUint(uint64(id), 10)
+
+	return domainInfo, nil
+}
 
 func deleteDomain(conn *libvirt.Connect, name string) error {
 	dom, err := conn.LookupDomainByName(name)

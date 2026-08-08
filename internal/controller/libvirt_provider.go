@@ -26,7 +26,7 @@ type infraProvider interface {
 
 type machineProvider interface {
 	GetMachineState(cfg libvirtclient.MachineConfig) (libvirtclient.DomainState, error)
-	CreateMachine(cfg libvirtclient.MachineConfig) error
+	CreateMachine(cfg libvirtclient.MachineConfig) (libvirtclient.DomainInfo, error)
 	StartMachine(cfg libvirtclient.MachineConfig) error
 	DeleteMachine(cfg libvirtclient.MachineConfig) error
 }
