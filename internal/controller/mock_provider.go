@@ -99,10 +99,10 @@ func (m *MockMachineProvider) GetMachineState(cfg libvirtclient.MachineConfig) (
 }
 
 // CreateMachine returns a pre-configured error.
-func (m *MockMachineProvider) CreateMachine(cfg libvirtclient.MachineConfig) error {
+func (m *MockMachineProvider) CreateMachine(cfg libvirtclient.MachineConfig) (libvirtclient.DomainInfo, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.CreateMachineErr
+	return libvirtclient.DomainInfo{}, m.CreateMachineErr
 }
 
 // StartMachine returns a pre-configured error.

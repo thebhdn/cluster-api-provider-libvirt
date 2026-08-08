@@ -48,13 +48,21 @@ func (p *Provider) EnsureInfra(cfg InfraConfig) error {
 	return nil
 }
 
-func (p *Provider) CreateMachine(cfg MachineConfig) error {
+func (p *Provider) CreateMachine(cfg MachineConfig) (DomainInfo, error) {
+	info := DomainInfo{}
+
 	conn, err := connect(cfg.getURI())
 	if err != nil {
-		return fmt.Errorf("connect to libvirt host: %w", err)
+		return info, fmt.Errorf("connect to libvirt host: %w", err)
 	}
 	defer conn.Close()
-	return createDomain(conn, cfg)
+
+	info, err = createDomain(conn, cfg)
+	if err != nil {
+		return info, err
+	}
+
+	return info, nil
 }
 
 func (p *Provider) StartMachine(cfg MachineConfig) error {

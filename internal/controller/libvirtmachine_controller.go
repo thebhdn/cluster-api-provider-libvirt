@@ -248,7 +248,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		cfg.UserData = []byte("test")
 
-		err := r.MachineProvider.CreateMachine(cfg)
+		info, err := r.MachineProvider.CreateMachine(cfg)
 		if err != nil {
 			logger.Error(err, "Unable to create domain", "domain", cfg.DomainName)
 
@@ -262,8 +262,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		// TODO: make it domain ID
-		providerID := "libvirt://" + scope.LibvirtMachine.Namespace + "/" + scope.LibvirtCluster.Name
+		providerID := "libvirt://" + info.ID
 		scope.LibvirtMachine.Spec.ProviderID = &providerID
 
 		conditions.Set(scope.LibvirtMachine, metav1.Condition{
