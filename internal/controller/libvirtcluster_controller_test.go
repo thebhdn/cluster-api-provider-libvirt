@@ -114,11 +114,11 @@ var _ = Describe("LibvirtCluster Controller", func() {
 
 			// Create reconciler with mock provider
 			reconciler := &LibvirtClusterReconciler{
-				Client:        k8sClient,
-				Scheme:        k8sClient.Scheme(),
-				InfraProvider: &MockInfraProvider{},
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Provider: &MockProvider{},
 			}
-			reconciler.InfraProvider.(*MockInfraProvider).SetEnsureInfraErr(mockErr)
+			reconciler.Provider.(*MockProvider).SetEnsureInfraErr(mockErr)
 
 			// Call reconcileNormal directly (bypasses owner-check in Reconcile entry point)
 			result, err := reconciler.reconcileNormal(scope)
@@ -165,9 +165,9 @@ var _ = Describe("LibvirtCluster Controller", func() {
 
 		// Create reconciler with mock provider
 		reconciler := &LibvirtClusterReconciler{
-			Client:        k8sClient,
-			Scheme:        k8sClient.Scheme(),
-			InfraProvider: &MockInfraProvider{},
+			Client:   k8sClient,
+			Scheme:   k8sClient.Scheme(),
+			Provider: &MockProvider{},
 		}
 
 		// Call reconcileDelete directly (bypasses owner-check in Reconcile entry point)
