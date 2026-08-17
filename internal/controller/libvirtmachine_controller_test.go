@@ -137,11 +137,11 @@ var _ = Describe("LibvirtMachine Controller", func() {
 
 			// Create reconciler with mock provider
 			reconciler := &LibvirtMachineReconciler{
-				Client:          k8sClient,
-				Scheme:          k8sClient.Scheme(),
-				MachineProvider: &MockMachineProvider{},
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Provider: &MockProvider{},
 			}
-			mockProvider := reconciler.MachineProvider.(*MockMachineProvider)
+			mockProvider := reconciler.Provider.(*MockProvider)
 			mockProvider.SetMachineState(machineState)
 			mockProvider.SetGetMachineStateErr(mockErr)
 
@@ -196,9 +196,9 @@ var _ = Describe("LibvirtMachine Controller", func() {
 
 		// Create reconciler with mock provider
 		reconciler := &LibvirtMachineReconciler{
-			Client:          k8sClient,
-			Scheme:          k8sClient.Scheme(),
-			MachineProvider: &MockMachineProvider{},
+			Client:   k8sClient,
+			Scheme:   k8sClient.Scheme(),
+			Provider: &MockProvider{},
 		}
 
 		// Call reconcileDelete directly (bypasses owner-check in Reconcile entry point)

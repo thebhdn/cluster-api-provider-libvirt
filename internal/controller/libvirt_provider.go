@@ -20,18 +20,12 @@ import (
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 )
 
-type infraProvider interface {
+type provider interface {
 	EnsureInfra(cfg libvirtclient.InfraConfig) error
-}
-
-type machineProvider interface {
 	GetMachineState(cfg libvirtclient.MachineConfig) (libvirtclient.DomainState, error)
 	CreateMachine(cfg libvirtclient.MachineConfig) (libvirtclient.DomainInfo, error)
 	StartMachine(cfg libvirtclient.MachineConfig) error
 	DeleteMachine(cfg libvirtclient.MachineConfig) error
 }
 
-var (
-	_ infraProvider   = &libvirtclient.Provider{}
-	_ machineProvider = &libvirtclient.Provider{}
-)
+var _ provider = (*libvirtclient.Provider)(nil)

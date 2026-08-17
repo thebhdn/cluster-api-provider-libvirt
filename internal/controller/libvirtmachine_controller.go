@@ -47,7 +47,7 @@ type LibvirtMachineReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	MachineProvider machineProvider
+	Provider provider
 }
 
 type MachineScope struct {
@@ -226,7 +226,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		Message: "Cluster infrastructure is ready",
 	})
 
-	state, err := r.MachineProvider.GetMachineState(cfg)
+	state, err := r.Provider.GetMachineState(cfg)
 	if err != nil {
 		logger.Error(err, "Unable to get domain state")
 		return ctrl.Result{}, err
@@ -248,7 +248,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		cfg.UserData = []byte("test")
 
-		info, err := r.MachineProvider.CreateMachine(cfg)
+		info, err := r.Provider.CreateMachine(cfg)
 		if err != nil {
 			logger.Error(err, "Unable to create domain", "domain", cfg.DomainName)
 
@@ -280,7 +280,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		scope.LibvirtMachine.Status.Ready = false
 
-		if err := r.MachineProvider.StartMachine(cfg); err != nil {
+		if err := r.Provider.StartMachine(cfg); err != nil {
 			logger.Error(err, "Unable to start domain", "domain", cfg.DomainName)
 
 			conditions.Set(scope.LibvirtMachine, metav1.Condition{
@@ -333,7 +333,7 @@ func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Re
 
 	logger.Info("Deleting domain", "domain", cfg.DomainName)
 
-	err := r.MachineProvider.DeleteMachine(cfg)
+	err := r.Provider.DeleteMachine(cfg)
 	if err != nil {
 		logger.Error(err, "Unable to delete domain", "domain", cfg)
 		return ctrl.Result{}, err

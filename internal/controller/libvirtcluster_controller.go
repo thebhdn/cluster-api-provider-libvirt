@@ -48,7 +48,7 @@ type LibvirtClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	InfraProvider infraProvider
+	Provider provider
 }
 
 // ClusterScope is a struct that contains the necessary data needed for a LibvirtCluster controller
@@ -144,7 +144,7 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 		Message: "Infrastructure provisioning in progress",
 	})
 
-	if err := r.InfraProvider.EnsureInfra(scope.InfraConfig); err != nil {
+	if err := r.Provider.EnsureInfra(scope.InfraConfig); err != nil {
 		logger.Error(err, "could not verify libvirt infrastructure, requeuing....")
 
 		conditions.Set(scope.LibvirtCluster, v1.Condition{
