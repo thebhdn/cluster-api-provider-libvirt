@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -179,8 +180,12 @@ func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Re
 		"cluster-name", scope.LibvirtCluster.Name,
 		"cluster-namespace", scope.LibvirtCluster.Namespace)
 
-	controllerutil.RemoveFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer)
-	controllerutil.RemoveFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer)
+	if ok := controllerutil.RemoveFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer); !ok {
+		return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from LibvirtCluster  %s/%s",
+			infrav1.LibvirtClusterFinalizer,
+			scope.Cluster.Namespace,
+			scope.Cluster.Name)
+	}
 
 	return ctrl.Result{}, nil
 }
