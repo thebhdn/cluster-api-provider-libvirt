@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +38,7 @@ import (
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -51,18 +53,19 @@ type LibvirtMachineReconciler struct {
 }
 
 type MachineScope struct {
-	Cluster        *clusterv1.Cluster
-	Machine        *clusterv1.Machine
-	Ctx            context.Context
-	LibvirtCluster *infrav1.LibvirtCluster
-	LibvirtMachine *infrav1.LibvirtMachine
-	MachineConfig  libvirtclient.MachineConfig
+	Cluster          *clusterv1.Cluster
+	Machine          *clusterv1.Machine
+	Ctx              context.Context
+	LibvirtCluster   *infrav1.LibvirtCluster
+	LibvirtMachine   *infrav1.LibvirtMachine
+	MachineConfig    libvirtclient.MachineConfig
+	ReconcilerClient client.Client
 }
 
 const (
 	running = libvirtclient.DomainStateRunning
 	stopped = libvirtclient.DomainStateStopped
-	uknown  = libvirtclient.DomainStateUnknown
+	unknown = libvirtclient.DomainStateUnknown
 	missing = libvirtclient.DomainStateNotFound
 )
 
@@ -140,12 +143,13 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	scope := &MachineScope{
-		Cluster:        ownerCluster,
-		Machine:        ownerMachine,
-		LibvirtCluster: libvirtCluster,
-		LibvirtMachine: libvirtMachine,
-		MachineConfig:  newMachineConfig(libvirtMachine, libvirtCluster),
-		Ctx:            ctx,
+		Cluster:          ownerCluster,
+		Machine:          ownerMachine,
+		LibvirtCluster:   libvirtCluster,
+		LibvirtMachine:   libvirtMachine,
+		MachineConfig:    newMachineConfig(libvirtMachine, libvirtCluster),
+		Ctx:              ctx,
+		ReconcilerClient: r.Client,
 	}
 
 	if !libvirtMachine.DeletionTimestamp.IsZero() {
@@ -246,7 +250,22 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			Message: "Domain provisioning in progress",
 		})
 
-		cfg.UserData = []byte("test")
+		if scope.Machine.Spec.Bootstrap.DataSecretName == nil {
+			logger.Info("Waiting for Machine's Userdata to be set ... ")
+
+			scope.LibvirtMachine.Status.Ready = false
+
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
+		cloudInitUserData, err := getCloudInitData(scope)
+		if err != nil {
+			err = fmt.Errorf("error during getting cloud init user data: %w", err)
+
+			return ctrl.Result{}, err
+		}
+
+		scope.MachineConfig.UserData = cloudInitUserData
 
 		info, err := r.Provider.CreateMachine(cfg)
 		if err != nil {
@@ -290,14 +309,10 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 				Message: fmt.Sprintf("Failed start Domain: %v", err),
 			})
 
-			scope.LibvirtMachine.Status.Ready = false
-			scope.LibvirtMachine.Status.Initialization.Provisioned = false
-
 			return ctrl.Result{}, err
 		}
 
-		scope.LibvirtMachine.Status.Ready = false
-		scope.LibvirtMachine.Status.Initialization.Provisioned = true
+		scope.LibvirtMachine.Status.Ready = true
 
 		return ctrl.Result{}, nil
 	case running:
@@ -314,8 +329,8 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		scope.LibvirtMachine.Status.Initialization.Provisioned = true
 
 		return ctrl.Result{}, nil
-	case uknown:
-		logger.Info("Domain state is uknown, requeuing", "domain", cfg.DomainName)
+	case unknown:
+		logger.Info("Domain state is unknown, requeuing", "domain", cfg.DomainName)
 
 		scope.LibvirtMachine.Status.Ready = false
 		scope.LibvirtMachine.Status.Initialization.Provisioned = false
@@ -363,4 +378,25 @@ func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine, libvirtCluster *in
 		VCPU:       uint(libvirtMachine.Spec.VCPU),
 		DiskSize:   uint64(libvirtMachine.Spec.DiskGiB),
 	}
+}
+
+func getCloudInitData(scope *MachineScope) ([]byte, error) {
+	dataSecretNamespacedName := types.NamespacedName{
+		Namespace: scope.Machine.Namespace,
+		Name:      *scope.Machine.Spec.Bootstrap.DataSecretName,
+	}
+
+	dataSecret := &corev1.Secret{}
+
+	err := scope.ReconcilerClient.Get(scope.Ctx, dataSecretNamespacedName, dataSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	userData, ok := dataSecret.Data["value"]
+	if !ok {
+		return nil, fmt.Errorf("no userData key found in secret %s", dataSecretNamespacedName)
+	}
+
+	return userData, nil
 }
