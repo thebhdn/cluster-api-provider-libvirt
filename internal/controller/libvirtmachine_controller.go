@@ -313,6 +313,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		}
 
 		scope.LibvirtMachine.Status.Ready = true
+		scope.LibvirtMachine.Status.Initialization.Provisioned = true
 
 		return ctrl.Result{}, nil
 	case running:
