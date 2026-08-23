@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -43,6 +44,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		namespacedName types.NamespacedName
 		machine        *infrastructurev1alpha1.LibvirtMachine
 		cluster        *infrastructurev1alpha1.LibvirtCluster
+		secret         *corev1.Secret
 	)
 
 	BeforeEach(func() {
@@ -60,9 +62,26 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			},
 			Spec: infrastructurev1alpha1.LibvirtClusterSpec{
 				URI: "qemu+tcp://localhost/system",
+				ControlPlaneEndpoint: clusterv1.APIEndpoint{
+					Host: "localhost",
+					Port: 6443,
+				},
 			},
 		}
 		err := k8sClient.Create(ctx, cluster)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Create UserData Secret first
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testClusterName + "-secret",
+				Namespace: testNamespace,
+			},
+			StringData: map[string]string{
+				"value": "be metal my friend",
+			},
+		}
+		err = k8sClient.Create(ctx, secret)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Create LibvirtMachine directly — no CAPI Machine/Cluster required
@@ -81,16 +100,22 @@ var _ = Describe("LibvirtMachine Controller", func() {
 	})
 
 	AfterEach(func() {
-		toDelete := &infrastructurev1alpha1.LibvirtMachine{}
-		err := k8sClient.Get(ctx, namespacedName, toDelete)
+		machineDel := &infrastructurev1alpha1.LibvirtMachine{}
+		err := k8sClient.Get(ctx, namespacedName, machineDel)
 		if err != nil && !apierrors.IsNotFound(err) {
 			Expect(err).NotTo(HaveOccurred())
 		}
 		if apierrors.IsNotFound(err) {
 			return
 		}
-		err = k8sClient.Delete(ctx, toDelete)
+		err = k8sClient.Delete(ctx, machineDel)
 		Expect(err).NotTo(HaveOccurred())
+
+		secretDel := &corev1.Secret{}
+		err = k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-secret", Namespace: testNamespace}, secretDel)
+		if err == nil {
+			_ = k8sClient.Delete(ctx, secretDel)
+		}
 
 		// Also delete the cluster
 		clusterDel := &infrastructurev1alpha1.LibvirtCluster{}
@@ -104,23 +129,30 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		"reconciliation with mock provider",
 		func(machineState libvirtclient.DomainState, mockErr error, expectReady bool, expectProvisioned bool) {
 			By("calling reconcileNormal")
-			// Get the updated LibvirtMachine
-			updated := &infrastructurev1alpha1.LibvirtMachine{}
+
+			// Get the libvMachine LibvirtMachine
+			libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
 			Eventually(func() bool {
-				return k8sClient.Get(ctx, namespacedName, updated) == nil
+				return k8sClient.Get(ctx, namespacedName, libvMachine) == nil
+			}, "10s", "1s").Should(BeTrue())
+
+			userDataSecret := &corev1.Secret{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-secret", Namespace: testNamespace}, userDataSecret) == nil
 			}, "10s", "1s").Should(BeTrue())
 
 			// Get the LibvirtCluster
-			clusterUpdated := &infrastructurev1alpha1.LibvirtCluster{}
+			libvCluster := &infrastructurev1alpha1.LibvirtCluster{}
 			Eventually(func() bool {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, clusterUpdated) == nil
+				return k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, libvCluster) == nil
 			}, "10s", "1s").Should(BeTrue())
 
 			// Construct a MachineScope for direct reconcileNormal call
 			infraReady := true
 			// Pre-add finalizer so reconcileNormal skips the early return at line 195
-			controllerutil.AddFinalizer(updated, infrastructurev1alpha1.LibvirtMachineFinalizer)
+			controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
 			scope := &MachineScope{
+				ReconcilerClient: k8sClient,
 				Cluster: &clusterv1.Cluster{
 					Status: clusterv1.ClusterStatus{
 						Initialization: clusterv1.ClusterInitializationStatus{
@@ -128,11 +160,20 @@ var _ = Describe("LibvirtMachine Controller", func() {
 						},
 					},
 				},
-				Machine:        &clusterv1.Machine{},
-				LibvirtCluster: clusterUpdated,
-				LibvirtMachine: updated,
+				Machine: &clusterv1.Machine{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: testNamespace,
+					},
+					Spec: clusterv1.MachineSpec{
+						Bootstrap: clusterv1.Bootstrap{
+							DataSecretName: &userDataSecret.Name,
+						},
+					},
+				},
+				LibvirtCluster: libvCluster,
+				LibvirtMachine: libvMachine,
 				Ctx:            ctx,
-				MachineConfig:  newMachineConfig(updated, clusterUpdated),
+				MachineConfig:  newMachineConfig(libvMachine, libvCluster),
 			}
 
 			// Create reconciler with mock provider
@@ -150,15 +191,15 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
 
-			// Verify status was updated
-			Expect(updated.Status.Ready).To(Equal(expectReady), "status.ready mismatch")
-			Expect(updated.Status.Initialization.Provisioned).To(Equal(expectProvisioned), "status.initialization.provisioned mismatch")
+			// Verify status was libvMachine
+			Expect(libvMachine.Status.Ready).To(Equal(expectReady), "status.ready mismatch")
+			Expect(libvMachine.Status.Initialization.Provisioned).To(Equal(expectProvisioned), "status.initialization.provisioned mismatch")
 
 			// Verify condition was set appropriately
 			if expectReady && machineState == libvirtclient.DomainStateRunning {
-				Expect(updated.Status.Conditions).NotTo(BeEmpty())
+				Expect(libvMachine.Status.Conditions).NotTo(BeEmpty())
 				found := false
-				for _, c := range updated.Status.Conditions {
+				for _, c := range libvMachine.Status.Conditions {
 					if c.Type == infrastructurev1alpha1.DomainRunningCondition {
 						Expect(c.Status).To(Equal(metav1.ConditionTrue))
 						found = true
@@ -168,30 +209,30 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			}
 		},
 		Entry("domain running -> ready and provisioned", libvirtclient.DomainStateRunning, nil, true, true),
-		Entry("domain stopped -> not ready but provisioned", libvirtclient.DomainStateStopped, nil, false, true),
-		// Entry("domain not found -> ready and provisioned after creation", libvirtclient.DomainStateNotFound, nil, true, true),
+		Entry("domain stopped -> started -> ready -> provisioned", libvirtclient.DomainStateStopped, nil, true, true),
+		Entry("domain not found -> ready and provisioned after creation", libvirtclient.DomainStateNotFound, nil, true, true),
 	)
 
 	It("should handle deletion correctly", func() {
 		By("calling reconcileDelete")
-		updated := &infrastructurev1alpha1.LibvirtMachine{}
-		Expect(k8sClient.Get(ctx, namespacedName, updated)).To(Succeed())
+		libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
+		Expect(k8sClient.Get(ctx, namespacedName, libvMachine)).To(Succeed())
 		// Add finalizer — reconcileDelete expects it to be present
-		controllerutil.AddFinalizer(updated, infrastructurev1alpha1.LibvirtMachineFinalizer)
-		Expect(k8sClient.Update(ctx, updated)).To(Succeed())
+		controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
+		Expect(k8sClient.Update(ctx, libvMachine)).To(Succeed())
 
 		// Get the LibvirtCluster
-		clusterUpdated := &infrastructurev1alpha1.LibvirtCluster{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, clusterUpdated)).To(Succeed())
+		libvCluster := &infrastructurev1alpha1.LibvirtCluster{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, libvCluster)).To(Succeed())
 
 		// Construct a MachineScope for direct reconcileDelete call
 		scope := &MachineScope{
 			Cluster:        &clusterv1.Cluster{},
 			Machine:        &clusterv1.Machine{},
-			LibvirtCluster: clusterUpdated,
-			LibvirtMachine: updated,
+			LibvirtCluster: libvCluster,
+			LibvirtMachine: libvMachine,
 			Ctx:            ctx,
-			MachineConfig:  newMachineConfig(updated, clusterUpdated),
+			MachineConfig:  newMachineConfig(libvMachine, libvCluster),
 		}
 
 		// Create reconciler with mock provider

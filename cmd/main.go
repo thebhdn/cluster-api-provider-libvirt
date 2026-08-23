@@ -153,17 +153,17 @@ func main() {
 	provider := libvirtclient.NewProvider()
 
 	if err := (&controller.LibvirtClusterReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		Provider:      provider,
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Provider: provider,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "libvirtcluster")
 		os.Exit(1)
 	}
 	if err := (&controller.LibvirtMachineReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		Provider:        provider,
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Provider: provider,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "libvirtmachine")
 		os.Exit(1)
