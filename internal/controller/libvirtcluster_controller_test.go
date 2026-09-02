@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
@@ -96,7 +97,7 @@ var _ = Describe("LibvirtCluster Controller", func() {
 
 	DescribeTable(
 		"reconciliation with mock provider",
-		func(mockErr error, expectReady bool, expectProvisioned bool) {
+		func(mockErr error, expectReady bool, expectProvisioned bool, expectReason string) {
 			By("calling reconcileNormal")
 			// Reconcile the LibvirtCluster
 			updated := &infrastructurev1alpha1.LibvirtCluster{}
@@ -134,20 +135,31 @@ var _ = Describe("LibvirtCluster Controller", func() {
 			Expect(updated.Status.Initialization.Provisioned).To(Equal(expectProvisioned), "status.initialization.provisioned mismatch")
 
 			// Verify condition was set
-			if expectReady {
-				Expect(updated.Status.Conditions).NotTo(BeEmpty())
-				found := false
-				for _, c := range updated.Status.Conditions {
-					if c.Type == infrastructurev1alpha1.InfrastructureReadyCondition {
-						Expect(c.Status).To(Equal(metav1.ConditionTrue))
-						found = true
-					}
+			var found bool
+			var cond metav1.Condition
+			for _, c := range updated.Status.Conditions {
+				if c.Type == infrastructurev1alpha1.InfrastructureReadyCondition {
+					cond = c
+					found = true
 				}
-				Expect(found).To(BeTrue(), "InfrastructureReady condition should be True")
+			}
+			Expect(found).To(BeTrue(), "InfrastructureReady condition should be set")
+
+			if expectReady {
+				Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+				Expect(cond.Reason).To(Equal(infrastructurev1alpha1.InfrastructureReadyReason))
+			} else {
+				Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				Expect(cond.Reason).To(Equal(expectReason))
+				Expect(cond.Message).NotTo(BeEmpty())
 			}
 		},
-		Entry("EnsureInfra success -> ready and provisioned", nil, true, true),
-		Entry("EnsureInfra error -> not ready and not provisioned", errors.New("mock ensure infra failure"), false, false),
+		Entry("EnsureInfra success -> ready and provisioned", nil, true, true, "no-reason"),
+		Entry("EnsureInfra missing pool -> not ready, reason InfrastructureMissing", &libvirtclient.ErrInfraMissing{Kind: libvirtclient.InfraKindStoragePool, Name: "base-pool"}, false, false, "InfrastructureMissing"),
+		Entry("EnsureInfra missing network -> not ready, reason InfrastructureMissing", &libvirtclient.ErrInfraMissing{Kind: libvirtclient.InfraKindNetwork, Name: "mgmt"}, false, false, "InfrastructureMissing"),
+		Entry("EnsureInfra inactive pool -> not ready, reason InfrastructureInactive", &libvirtclient.ErrInfraInactive{Kind: libvirtclient.InfraKindStoragePool, Name: "domain-pool"}, false, false, "InfrastructureInactive"),
+		Entry("EnsureInfra inactive network -> not ready, reason InfrastructureInactive", &libvirtclient.ErrInfraInactive{Kind: libvirtclient.InfraKindNetwork, Name: "mgmt"}, false, false, "InfrastructureInactive"),
+		Entry("EnsureInfra generic error -> not ready, reason InfrastructureProvisioningFailed", errors.New("mock ensure infra failure"), false, false, "InfrastructureProvisioningFailed"),
 	)
 
 	It("should handle deletion correctly", func() {

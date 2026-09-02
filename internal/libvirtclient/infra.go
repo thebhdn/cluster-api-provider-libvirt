@@ -23,24 +23,67 @@ import (
 	"libvirt.org/go/libvirt"
 )
 
+const (
+	InfraKindStoragePool = "storagePool"
+	InfraKindNetwork     = "network"
+)
+
+// ErrInfraMissing reports that a libvirt resource referenced by the
+// cluster spec does not exist. The provider never creates infra.
+type ErrInfraMissing struct {
+	// Kind is InfraKindStoragePool or InfraKindNetwork.
+	Kind string
+	// Name is the resource name as referenced in the cluster spec.
+	Name string
+}
+
+func (e *ErrInfraMissing) Error() string {
+	return fmt.Sprintf("%s '%s' not found", e.Kind, e.Name)
+}
+
+// ErrInfraInactive reports that a referenced libvirt resource exists
+// but is not active. The provider does not manage pool/network
+// lifecycle.
+type ErrInfraInactive struct {
+	// Kind is InfraKindStoragePool or InfraKindNetwork.
+	Kind string
+	// Name is the resource name as referenced in the cluster spec.
+	Name string
+}
+
+func (e *ErrInfraInactive) Error() string {
+	return fmt.Sprintf("%s '%s' exists but is not active (start it out-of-band; the provider does not manage pool/network lifecycle)", e.Kind, e.Name)
+}
+
+// infraCheckError classifies the state of a referenced libvirt resource.
+func infraCheckError(kind, name string, exists, active bool) error {
+	if !exists {
+		return &ErrInfraMissing{
+			Kind: kind,
+			Name: name,
+		}
+	}
+	if !active {
+		return &ErrInfraInactive{
+			Kind: kind,
+			Name: name,
+		}
+	}
+	return nil
+}
+
 func ensureNetwork(conn *libvirt.Connect, name string) error {
 	netExists, err := networkExists(conn, name)
 	if err != nil {
 		return err
-	}
-	if !netExists {
-		return fmt.Errorf("libvirt network %s doesnt exist", name)
 	}
 
 	netActive, err := isNetworkActive(conn, name)
 	if err != nil {
 		return err
 	}
-	if !netActive {
-		return fmt.Errorf("libvirt network %s is not active", name)
-	}
 
-	return nil
+	return infraCheckError(InfraKindNetwork, name, netExists, netActive)
 }
 
 func ensureBasePool(conn *libvirt.Connect, name string) error {
@@ -48,19 +91,13 @@ func ensureBasePool(conn *libvirt.Connect, name string) error {
 	if err != nil {
 		return err
 	}
-	if !basePoolExists {
-		return fmt.Errorf("libvirt base pool %s doesnt exist", name)
-	}
 
 	basePoolActive, err := isStoragePoolActive(conn, name)
 	if err != nil {
 		return err
 	}
-	if !basePoolActive {
-		return fmt.Errorf("libvirt base pool %s is not active", name)
-	}
 
-	return nil
+	return infraCheckError(InfraKindStoragePool, name, basePoolExists, basePoolActive)
 }
 
 func ensureDomainPool(conn *libvirt.Connect, name string) error {
@@ -68,19 +105,13 @@ func ensureDomainPool(conn *libvirt.Connect, name string) error {
 	if err != nil {
 		return err
 	}
-	if !domainPoolExists {
-		return fmt.Errorf("libvirt domain pool %s doesnt exist", name)
-	}
 
 	domainPoolActive, err := isStoragePoolActive(conn, name)
 	if err != nil {
 		return err
 	}
-	if !domainPoolActive {
-		return fmt.Errorf("libvirt domain pool %s is not active", name)
-	}
 
-	return nil
+	return infraCheckError(InfraKindStoragePool, name, domainPoolExists, domainPoolActive)
 }
 
 func networkExists(conn *libvirt.Connect, name string) (bool, error) {
