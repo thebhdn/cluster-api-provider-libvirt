@@ -26,6 +26,14 @@ const (
 	InfrastructureProvisioningInProgressReason = "InfrastructureProvisioningInProgress"
 	InfrastructureProvisioningFailedReason     = "InfrastructureProvisioningFailed"
 	InfrastructureReadyReason                  = "InfrastructureReady"
+
+	// InfrastructureMissingReason documents that a libvirt resource
+	// referenced by the cluster spec does not exist.
+	InfrastructureMissingReason = "InfrastructureMissing"
+
+	// InfrastructureInactiveReason documents that a libvirt resource
+	// referenced by the cluster spec exists but is not active.
+	InfrastructureInactiveReason = "InfrastructureInactive"
 )
 
 const (

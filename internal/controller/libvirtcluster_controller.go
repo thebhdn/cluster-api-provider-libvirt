@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -148,13 +149,13 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 	if err := r.Provider.EnsureInfra(scope.InfraConfig); err != nil {
 		logger.Error(err, "could not verify libvirt infrastructure, requeuing....")
 
+		reason := getInfraError(err)
 		conditions.Set(scope.LibvirtCluster, v1.Condition{
 			Type:    infrav1.InfrastructureReadyCondition,
 			Status:  v1.ConditionFalse,
-			Reason:  infrav1.InfrastructureProvisioningFailedReason,
+			Reason:  reason,
 			Message: err.Error(),
 		})
-		// TODO: define sentinel errs
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
@@ -196,5 +197,20 @@ func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirtclient.InfraC
 		BasePool:   libvirtCluster.Spec.BasePool,
 		DomainPool: libvirtCluster.Spec.DomainPool,
 		Network:    libvirtCluster.Spec.Network,
+	}
+}
+
+// getInfraError maps EnsureInfra errors to stable condition reasons.
+func getInfraError(err error) string {
+	var missing *libvirtclient.ErrInfraMissing
+	var inactive *libvirtclient.ErrInfraInactive
+
+	switch {
+	case errors.As(err, &missing):
+		return infrav1.InfrastructureMissingReason
+	case errors.As(err, &inactive):
+		return infrav1.InfrastructureInactiveReason
+	default:
+		return infrav1.InfrastructureProvisioningFailedReason
 	}
 }

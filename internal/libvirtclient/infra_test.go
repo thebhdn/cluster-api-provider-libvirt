@@ -17,6 +17,7 @@ limitations under the License.
 package libvirtclient
 
 import (
+	"errors"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -40,7 +41,8 @@ var _ = Describe("isLibvirtErr", func() {
 		{"ERR_NO_DOMAIN does not match ERR_NO_STORAGE_POOL", libvirt.ERR_NO_DOMAIN, libvirt.ERR_NO_STORAGE_POOL, false},
 	}
 
-	DescribeTable("matches against libvirt error codes",
+	DescribeTable(
+		"matches against libvirt error codes",
 		func(tc testCase) {
 			err := &libvirt.Error{Code: tc.errorCode}
 			Expect(isLibvirtErr(fmt.Errorf("%w", err), tc.queryCode)).To(Equal(tc.shouldMatch))
@@ -62,5 +64,48 @@ var _ = Describe("isLibvirtErr", func() {
 		It("returns false", func() {
 			Expect(isLibvirtErr(nil, libvirt.ERR_NO_DOMAIN)).To(BeFalse())
 		})
+	})
+})
+
+var _ = Describe("infra sentinel errors", func() {
+	DescribeTable(
+		"infraCheckError classifies resource state",
+		func(kind, name string, exists, active, expectMissing, expectInactive bool) {
+			err := infraCheckError(kind, name, exists, active)
+			var missing *ErrInfraMissing
+			var inactive *ErrInfraInactive
+
+			if expectMissing {
+				Expect(err).NotTo(BeNil())
+				Expect(errors.As(err, &missing)).To(BeTrue())
+				Expect(missing.Kind).To(Equal(kind))
+				Expect(missing.Name).To(Equal(name))
+			} else if expectInactive {
+				Expect(err).NotTo(BeNil())
+				Expect(errors.As(err, &inactive)).To(BeTrue())
+				Expect(inactive.Kind).To(Equal(kind))
+				Expect(inactive.Name).To(Equal(name))
+			} else {
+				Expect(err).To(BeNil())
+			}
+		},
+		Entry("missing storage pool", InfraKindStoragePool, "base-pool", false, false, true, false),
+		Entry("missing network", InfraKindNetwork, "mgmt", false, false, true, false),
+		Entry("inactive storage pool", InfraKindStoragePool, "domain-pool", true, false, false, true),
+		Entry("inactive network", InfraKindNetwork, "mgmt", true, false, false, true),
+		Entry("active storage pool", InfraKindStoragePool, "base-pool", true, true, false, false),
+		Entry("active network", InfraKindNetwork, "mgmt", true, true, false, false),
+	)
+
+	It("ErrInfraMissing names the resource and the failure", func() {
+		err := infraCheckError(InfraKindStoragePool, "base-pool", false, false)
+		Expect(err.Error()).To(Equal("storage pool 'base-pool' not found"))
+	})
+
+	It("ErrInfraInactive names the resource and the remedy", func() {
+		err := infraCheckError(InfraKindNetwork, "mgmt", true, false)
+		Expect(err.Error()).To(Equal(
+			"network 'mgmt' exists but is not active (start it out-of-band; the provider does not manage pool/network lifecycle)",
+		))
 	})
 })
