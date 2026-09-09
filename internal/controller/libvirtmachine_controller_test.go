@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -107,6 +108,15 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		}
 		if apierrors.IsNotFound(err) {
 			return
+		}
+
+		// A finalizer blocks fake-client deletion (deletionTimestamp stays
+		// set, object lingers), which poisons the next spec's BeforeEach.
+		// Strip it so the object is actually removed.
+		if len(machineDel.GetFinalizers()) > 0 {
+			machineDel.SetFinalizers(nil)
+			err = k8sClient.Update(ctx, machineDel)
+			Expect(err).NotTo(HaveOccurred())
 		}
 		err = k8sClient.Delete(ctx, machineDel)
 		Expect(err).NotTo(HaveOccurred())
@@ -246,5 +256,78 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		result, err := reconciler.reconcileDelete(scope)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(BeZero())
+	})
+
+	Describe("machine address observation", func() {
+		var mockProvider *MockProvider
+
+		buildRunningScope := func() *MachineScope {
+			libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
+			Expect(k8sClient.Get(ctx, namespacedName, libvMachine)).To(Succeed())
+			controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
+
+			libvCluster := &infrastructurev1alpha1.LibvirtCluster{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, libvCluster)).To(Succeed())
+
+			infraReady := true
+
+			return &MachineScope{
+				Cluster: &clusterv1.Cluster{
+					Status: clusterv1.ClusterStatus{
+						Initialization: clusterv1.ClusterInitializationStatus{
+							InfrastructureProvisioned: &infraReady,
+						},
+					},
+				},
+				Machine:        &clusterv1.Machine{},
+				LibvirtCluster: libvCluster,
+				LibvirtMachine: libvMachine,
+				Ctx:            ctx,
+				MachineConfig:  newMachineConfig(libvMachine, libvCluster),
+			}
+		}
+
+		BeforeEach(func() {
+			mockProvider = &MockProvider{}
+			mockProvider.SetMachineState(libvirtclient.DomainStateRunning)
+		})
+
+		It("populates Status.Addresses from the provider address", func() {
+			mockProvider.SetMachineAddress("192.168.122.55")
+
+			reconciler := &LibvirtMachineReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Provider: mockProvider,
+			}
+
+			scope := buildRunningScope()
+			result, err := reconciler.reconcileNormal(scope)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			Expect(scope.LibvirtMachine.Status.Ready).To(BeTrue())
+			Expect(scope.LibvirtMachine.Status.Addresses).To(HaveLen(1))
+			Expect(scope.LibvirtMachine.Status.Addresses[0].Type).To(Equal(clusterv1.MachineInternalIP))
+			Expect(scope.LibvirtMachine.Status.Addresses[0].Address).To(Equal("192.168.122.55"))
+		})
+
+		It("requeues when the address lookup fails", func() {
+			mockProvider.SetGetMachineAddressErr(fmt.Errorf("get DHCP leases: connection reset"))
+
+			reconciler := &LibvirtMachineReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Provider: mockProvider,
+			}
+
+			scope := buildRunningScope()
+			result, err := reconciler.reconcileNormal(scope)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).ToNot(BeZero())
+
+			Expect(scope.LibvirtMachine.Status.Ready).To(BeTrue())
+			Expect(scope.LibvirtMachine.Status.Addresses).To(BeEmpty())
+		})
 	})
 })

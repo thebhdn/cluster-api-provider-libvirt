@@ -95,7 +95,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 
 	ginkgo.Context("WithNetwork", func() {
 		ginkgo.It("adds a network interface", func() {
-			domain := NewDomain("test-domain").WithNetwork("custom-net")
+			domain := NewDomain("test-domain").WithNetwork("custom-net", "")
 
 			gomega.Expect(domain.domain.Devices.Interfaces).To(gomega.HaveLen(1))
 			iface := domain.domain.Devices.Interfaces[0]
@@ -104,12 +104,27 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 		})
 
 		ginkgo.It("uses default network name when empty", func() {
-			domain := NewDomain("test-domain").WithNetwork("")
+			domain := NewDomain("test-domain").WithNetwork("", "")
 
 			gomega.Expect(domain.domain.Devices.Interfaces).To(gomega.HaveLen(1))
 			gomega.Expect(
 				domain.domain.Devices.Interfaces[0].Source.Network.Network,
 			).To(gomega.Equal(DefaultNetworkName))
+		})
+
+		ginkgo.It("sets the MAC address when provided", func() {
+			domain := NewDomain("test-domain").WithNetwork("custom-net", "52:54:00:12:34:56")
+
+			gomega.Expect(domain.domain.Devices.Interfaces).To(gomega.HaveLen(1))
+			gomega.Expect(domain.domain.Devices.Interfaces[0].MAC).NotTo(gomega.BeNil())
+			gomega.Expect(domain.domain.Devices.Interfaces[0].MAC.Address).To(gomega.Equal("52:54:00:12:34:56"))
+		})
+
+		ginkgo.It("omits the MAC address when empty", func() {
+			domain := NewDomain("test-domain").WithNetwork("custom-net", "")
+
+			gomega.Expect(domain.domain.Devices.Interfaces).To(gomega.HaveLen(1))
+			gomega.Expect(domain.domain.Devices.Interfaces[0].MAC).To(gomega.BeNil())
 		})
 	})
 
@@ -130,7 +145,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 				WithMemoryMiB(4096).
 				WithVCPU(2).
 				WithDiskFile("/path/disk.qcow2").
-				WithNetwork("default").
+				WithNetwork("default", "").
 				WithSerialConsole()
 
 			result := domain.Build()
@@ -156,7 +171,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 				WithMemoryMiB(1024).
 				WithVCPU(1).
 				WithDiskFile("/path/disk.qcow2").
-				WithNetwork("default")
+				WithNetwork("default", "")
 
 			xml, err := domain.Marshal()
 			gomega.Expect(err).To(gomega.BeNil())
@@ -172,7 +187,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 				WithVCPU(2).
 				WithDiskFile("/var/lib/libvirt/images/disk.qcow2").
 				WithCloudInitISO("/var/lib/libvirt/images/cloud-init.iso").
-				WithNetwork("default").
+				WithNetwork("default", "").
 				WithSerialConsole()
 
 			result := domain.Build()
@@ -194,7 +209,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 			WithVCPU(4).
 			WithDiskFile("/path/disk.qcow2").
 			WithCloudInitISO("/path/cloud-init.iso").
-			WithNetwork("mynetwork").
+			WithNetwork("mynetwork", "").
 			WithSerialConsole()
 
 		xml, err := domain.Marshal()

@@ -127,12 +127,12 @@ func (b *DomainBuilder) WithCloudInitISO(path string) *DomainBuilder {
 	return b
 }
 
-func (b *DomainBuilder) WithNetwork(name string) *DomainBuilder {
+func (b *DomainBuilder) WithNetwork(name, mac string) *DomainBuilder {
 	if name == "" {
 		name = DefaultNetworkName
 	}
 
-	b.domain.Devices.Interfaces = append(b.domain.Devices.Interfaces, libvirtxml.DomainInterface{
+	iface := libvirtxml.DomainInterface{
 		Source: &libvirtxml.DomainInterfaceSource{
 			Network: &libvirtxml.DomainInterfaceSourceNetwork{
 				Network: name,
@@ -141,7 +141,15 @@ func (b *DomainBuilder) WithNetwork(name string) *DomainBuilder {
 		Model: &libvirtxml.DomainInterfaceModel{
 			Type: DefaultNetworkModel,
 		},
-	})
+	}
+
+	if mac != "" {
+		iface.MAC = &libvirtxml.DomainInterfaceMAC{
+			Address: mac,
+		}
+	}
+
+	b.domain.Devices.Interfaces = append(b.domain.Devices.Interfaces, iface)
 
 	return b
 }

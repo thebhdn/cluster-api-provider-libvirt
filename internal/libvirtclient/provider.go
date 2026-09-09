@@ -18,6 +18,8 @@ package libvirtclient
 
 import (
 	"fmt"
+
+	libvirt "libvirt.org/go/libvirt"
 )
 
 type Provider struct{}
@@ -116,5 +118,38 @@ func (p *Provider) DeleteMachine(cfg MachineConfig) error {
 		return err
 	}
 
+	if err := p.releaseMachineReservation(conn, cfg); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// GetMachineAddress returns the machine's current IP from the network's DHCP
+// leases matched by the domain's deterministic MAC. Empty string when the VM
+// has no lease yet.
+func (p *Provider) GetMachineAddress(cfg MachineConfig) (string, error) {
+	conn, err := connect(cfg.getURI())
+	if err != nil {
+		return "", fmt.Errorf("connect to libvirt host: %w", err)
+	}
+	defer conn.Close()
+
+	network, err := conn.LookupNetworkByName(cfg.Network)
+	if err != nil {
+		return "", fmt.Errorf("lookup network %s: %w", cfg.Network, err)
+	}
+	defer network.Free() //nolint:errcheck
+
+	return machineAddress(network, cfg.Network, deriveDomainMAC(cfg.domainName()))
+}
+
+func (p *Provider) releaseMachineReservation(conn *libvirt.Connect, cfg MachineConfig) error {
+	network, err := conn.LookupNetworkByName(cfg.Network)
+	if err != nil {
+		return fmt.Errorf("lookup network %s: %w", cfg.Network, err)
+	}
+	defer network.Free() //nolint:errcheck
+
+	return releaseMachineIP(network, cfg.Network, cfg.domainName(), deriveDomainMAC(cfg.domainName()))
 }

@@ -26,6 +26,7 @@ type provider interface {
 	CreateMachine(cfg libvirtclient.MachineConfig) (libvirtclient.DomainInfo, error)
 	StartMachine(cfg libvirtclient.MachineConfig) error
 	DeleteMachine(cfg libvirtclient.MachineConfig) error
+	GetMachineAddress(cfg libvirtclient.MachineConfig) (string, error)
 }
 
 var _ provider = (*libvirtclient.Provider)(nil)
