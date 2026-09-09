@@ -60,12 +60,26 @@ func createDomain(conn *libvirt.Connect, cfg MachineConfig) (DomainInfo, error) 
 		return DomainInfo{}, fmt.Errorf("create iso disk %s: %w", cfg.BasePool, err)
 	}
 
+	mac := deriveDomainMAC(cfg.domainName())
+
+	network, err := conn.LookupNetworkByName(cfg.Network)
+	if err != nil {
+		return DomainInfo{}, fmt.Errorf("lookup network %s: %w", cfg.Network, err)
+	}
+	// errcheck: matches the repo-wide unchecked Free/Close pattern; the
+	// handle must outlive the reservation call.
+	defer network.Free() //nolint:errcheck
+
+	if _, err := reserveMachineIP(network, cfg.Network, cfg.domainName(), mac); err != nil {
+		return DomainInfo{}, err
+	}
+
 	domainXML, err := build.NewDomain(cfg.domainName()).
 		WithMemoryMiB(cfg.memoryMiB()).
 		WithVCPU(cfg.vCPU()).
 		WithDiskFile(diskPath).
 		WithCloudInitISO(cloudISOPath).
-		WithNetwork(cfg.Network).
+		WithNetwork(cfg.Network, mac).
 		WithSerialConsole().
 		Marshal()
 	if err != nil {

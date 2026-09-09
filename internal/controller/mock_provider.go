@@ -23,13 +23,15 @@ import (
 )
 
 type MockProvider struct {
-	mu                 sync.RWMutex
-	EnsureInfraErr     error
-	GetMachineStateErr error
-	CreateMachineErr   error
-	StartMachineErr    error
-	DeleteMachineErr   error
-	MachineState       libvirtclient.DomainState
+	mu                   sync.RWMutex
+	EnsureInfraErr       error
+	GetMachineStateErr   error
+	CreateMachineErr     error
+	StartMachineErr      error
+	DeleteMachineErr     error
+	MachineAddress       string
+	GetMachineAddressErr error
+	MachineState         libvirtclient.DomainState
 }
 
 var _ provider = (*MockProvider)(nil)
@@ -109,4 +111,25 @@ func (m *MockProvider) DeleteMachine(cfg libvirtclient.MachineConfig) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.DeleteMachineErr
+}
+
+// SetGetMachineAddressErr configures the error returned by GetMachineAddress.
+func (m *MockProvider) SetGetMachineAddressErr(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.GetMachineAddressErr = err
+}
+
+// SetMachineAddress sets the address returned by GetMachineAddress.
+func (m *MockProvider) SetMachineAddress(address string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.MachineAddress = address
+}
+
+// GetMachineAddress returns a pre-configured address and error.
+func (m *MockProvider) GetMachineAddress(cfg libvirtclient.MachineConfig) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.MachineAddress, m.GetMachineAddressErr
 }

@@ -329,7 +329,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		scope.LibvirtMachine.Status.Ready = true
 		scope.LibvirtMachine.Status.Initialization.Provisioned = true
 
-		return ctrl.Result{}, nil
+		return r.observeMachineAddress(scope)
 	case unknown:
 		logger.Info("Domain state is unknown, requeuing", "domain", cfg.DomainName)
 
@@ -337,6 +337,30 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		scope.LibvirtMachine.Status.Initialization.Provisioned = false
 
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// observeMachineAddress fills Status.Addresses from the provider's DHCP lease
+// lookup. Best-effort: a failed lookup is logged and retried on the next
+// reconcile, it does not fail the machine reconcile.
+func (r *LibvirtMachineReconciler) observeMachineAddress(scope *MachineScope) (ctrl.Result, error) {
+	logger := log.FromContext(scope.Ctx)
+
+	address, err := r.Provider.GetMachineAddress(scope.MachineConfig)
+	if err != nil {
+		logger.Error(err, "Unable to get machine address from DHCP leases")
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
+
+	if address != "" {
+		scope.LibvirtMachine.Status.Addresses = []clusterv1.MachineAddress{
+			{
+				Type:    clusterv1.MachineInternalIP,
+				Address: address,
+			},
+		}
 	}
 
 	return ctrl.Result{}, nil
