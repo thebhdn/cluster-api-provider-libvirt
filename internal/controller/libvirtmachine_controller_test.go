@@ -85,7 +85,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		err = k8sClient.Create(ctx, secret)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Create LibvirtMachine directly — no CAPI Machine/Cluster required
+		// Create LibvirtMachine directly - no CAPI Machine/Cluster required
 		machine = &infrastructurev1alpha1.LibvirtMachine{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
@@ -227,7 +227,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		By("calling reconcileDelete")
 		libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
 		Expect(k8sClient.Get(ctx, namespacedName, libvMachine)).To(Succeed())
-		// Add finalizer — reconcileDelete expects it to be present
+		// Add finalizer - reconcileDelete expects it to be present
 		controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
 		Expect(k8sClient.Update(ctx, libvMachine)).To(Succeed())
 

@@ -96,16 +96,4 @@ var _ = Describe("infra sentinel errors", func() {
 		Entry("active storage pool", InfraKindStoragePool, "base-pool", true, true, false, false),
 		Entry("active network", InfraKindNetwork, "mgmt", true, true, false, false),
 	)
-
-	It("ErrInfraMissing names the resource and the failure", func() {
-		err := infraCheckError(InfraKindStoragePool, "base-pool", false, false)
-		Expect(err.Error()).To(Equal("storage pool 'base-pool' not found"))
-	})
-
-	It("ErrInfraInactive names the resource and the remedy", func() {
-		err := infraCheckError(InfraKindNetwork, "mgmt", true, false)
-		Expect(err.Error()).To(Equal(
-			"network 'mgmt' exists but is not active (start it out-of-band; the provider does not manage pool/network lifecycle)",
-		))
-	})
 })

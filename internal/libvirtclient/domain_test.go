@@ -23,7 +23,8 @@ import (
 )
 
 var _ = Describe("DomainState constants", func() {
-	DescribeTable("constants resolve to their expected string",
+	DescribeTable(
+		"constants resolve to their expected string",
 		func(state DomainState, expected string) {
 			Expect(string(state)).To(Equal(expected))
 		},
@@ -35,7 +36,7 @@ var _ = Describe("DomainState constants", func() {
 })
 
 var _ = Describe("getDomainState", func() {
-	It("panics with nil conn — requires live libvirt", func() {
+	It("panics with nil conn - requires live libvirt", func() {
 		Expect(func() { getDomainState(nil, "nonexistent") }).To(Panic())
 	})
 })
@@ -57,7 +58,8 @@ var _ = Describe("DomainState mapping", func() {
 		{"pmsuspended", libvirt.DOMAIN_PMSUSPENDED, DomainStateUnknown},
 	}
 
-	DescribeTable("maps libvirt states to DomainState",
+	DescribeTable(
+		"maps libvirt states to DomainState",
 		func(tc mappingCase) {
 			// We can't exercise the full path without a live libvirt connection,
 			// but we verify the constants are well-formed.
