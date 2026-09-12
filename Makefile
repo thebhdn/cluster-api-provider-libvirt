@@ -1,5 +1,11 @@
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
+# Build tags for the manager binary. go-libvirt is compiled in the
+# libvirt_dlopen variant (C wrapper dlopens libvirt.so.0 at runtime), so
+# this tag must reach every container build - docker-build passes it to
+# the Dockerfile as a build-arg, keeping this line the single source of
+# truth.
+GO_TAGS ?= libvirt_dlopen
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -121,7 +127,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build -t ${IMG} --build-arg GO_TAGS=${GO_TAGS} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

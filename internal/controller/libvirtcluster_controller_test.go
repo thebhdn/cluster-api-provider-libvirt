@@ -50,7 +50,7 @@ var _ = Describe("LibvirtCluster Controller", func() {
 			Namespace: testNamespace,
 		}
 
-		// Create the LibvirtCluster directly — no CAPI owner required
+		// Create the LibvirtCluster directly - no CAPI owner required
 		cluster = &infrastructurev1alpha1.LibvirtCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       resourceName,
