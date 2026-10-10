@@ -32,6 +32,7 @@ type MockProvider struct {
 	MachineAddress       string
 	GetMachineAddressErr error
 	MachineState         libvirtclient.DomainState
+	CreatedMachineConfig *libvirtclient.MachineConfig
 }
 
 var _ provider = (*MockProvider)(nil)
@@ -92,11 +93,19 @@ func (m *MockProvider) GetMachineState(cfg libvirtclient.MachineConfig) (libvirt
 	return m.MachineState, m.GetMachineStateErr
 }
 
-// CreateMachine returns a pre-configured error.
-func (m *MockProvider) CreateMachine(cfg libvirtclient.MachineConfig) (libvirtclient.DomainInfo, error) {
+// CreateMachine records the config it was called with and returns a pre-configured error.
+func (m *MockProvider) CreateMachine(cfg libvirtclient.MachineConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.CreatedMachineConfig = &cfg
+	return m.CreateMachineErr
+}
+
+// GetCreatedMachineConfig returns the config passed to the last CreateMachine call.
+func (m *MockProvider) GetCreatedMachineConfig() *libvirtclient.MachineConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return libvirtclient.DomainInfo{}, m.CreateMachineErr
+	return m.CreatedMachineConfig
 }
 
 // StartMachine returns a pre-configured error.

@@ -162,6 +162,67 @@ var _ = Describe("LibvirtCluster Controller", func() {
 		Entry("EnsureInfra generic error -> not ready, reason InfrastructureProvisioningFailed", errors.New("mock ensure infra failure"), false, false, "InfrastructureProvisioningFailed"),
 	)
 
+	Describe("control plane endpoint", func() {
+		reconcileWith := func(libvirtEndpoint, clusterEndpoint clusterv1.APIEndpoint) *infrastructurev1alpha1.LibvirtCluster {
+			updated := &infrastructurev1alpha1.LibvirtCluster{}
+			Expect(k8sClient.Get(ctx, namespacedName, updated)).To(Succeed())
+			updated.Spec.ControlPlaneEndpoint = libvirtEndpoint
+
+			scope := &ClusterScope{
+				Cluster:        &clusterv1.Cluster{Spec: clusterv1.ClusterSpec{ControlPlaneEndpoint: clusterEndpoint}},
+				LibvirtCluster: updated,
+				InfraConfig:    newInfraConfig(updated),
+				Ctx:            ctx,
+			}
+			reconciler := &LibvirtClusterReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Provider: &MockProvider{},
+			}
+
+			result, err := reconciler.reconcileNormal(scope)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			return updated
+		}
+
+		endpointCondition := func(lc *infrastructurev1alpha1.LibvirtCluster) metav1.Condition {
+			for _, c := range lc.Status.Conditions {
+				if c.Type == infrastructurev1alpha1.ControlPlaneEndpointReadyCondition {
+					return c
+				}
+			}
+			Fail("ControlPlaneEndpointReady condition not set")
+			return metav1.Condition{}
+		}
+
+		endpoint := clusterv1.APIEndpoint{Host: "192.168.50.5", Port: 6443}
+
+		It("is not provisioned when no endpoint is set", func() {
+			updated := reconcileWith(clusterv1.APIEndpoint{}, clusterv1.APIEndpoint{})
+
+			Expect(updated.Status.Initialization.Provisioned).To(BeFalse())
+			cond := endpointCondition(updated)
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(infrastructurev1alpha1.ControlPlaneEndpointMissingReason))
+		})
+
+		It("is provisioned when only the Cluster sets an endpoint", func() {
+			updated := reconcileWith(clusterv1.APIEndpoint{}, endpoint)
+
+			Expect(updated.Status.Initialization.Provisioned).To(BeTrue())
+			Expect(endpointCondition(updated).Status).To(Equal(metav1.ConditionTrue))
+		})
+
+		It("is provisioned when the LibvirtCluster sets an endpoint", func() {
+			updated := reconcileWith(endpoint, clusterv1.APIEndpoint{})
+
+			Expect(updated.Status.Initialization.Provisioned).To(BeTrue())
+			Expect(endpointCondition(updated).Status).To(Equal(metav1.ConditionTrue))
+		})
+	})
+
 	It("should handle deletion correctly", func() {
 		By("calling reconcileDelete")
 		updated := &infrastructurev1alpha1.LibvirtCluster{}

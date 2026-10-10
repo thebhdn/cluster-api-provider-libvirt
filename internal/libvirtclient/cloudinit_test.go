@@ -43,7 +43,6 @@ var _ = Describe("writeCloudInitISO", func() {
 				MemoryMiB:  1024,
 				VCPU:       1,
 				DiskSize:   20,
-				DiskFormat: "qcow2",
 				UserData:   []byte("#cloud-config\ndata: hello\n"),
 			}
 

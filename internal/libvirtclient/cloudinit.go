@@ -26,6 +26,7 @@ import (
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -34,6 +35,12 @@ const (
 	metaDataFileName = "meta-data"
 	isoLabel         = "cidata"
 )
+
+// cloudInitMetaData is the NoCloud meta-data document.
+type cloudInitMetaData struct {
+	InstanceID    string `json:"instance-id"`
+	LocalHostname string `json:"local-hostname"`
+}
 
 func writeCloudInitISO(dst io.Writer, cfg MachineConfig) error {
 	tmpDir, err := os.MkdirTemp("", "iso-*")
@@ -62,12 +69,13 @@ func writeCloudInitISO(dst io.Writer, cfg MachineConfig) error {
 		return fmt.Errorf("create ISO filesystem: %w", err)
 	}
 
-	metadata := fmt.Appendf(
-		nil,
-		"instance-id: %s\nlocal-hostname: %s\n",
-		cfg.domainName(),
-		cfg.domainName(),
-	)
+	metadata, err := yaml.Marshal(cloudInitMetaData{
+		InstanceID:    cfg.instanceID(),
+		LocalHostname: cfg.hostname(),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal cloud-init meta-data: %w", err)
+	}
 
 	flags := os.O_CREATE | os.O_WRONLY
 

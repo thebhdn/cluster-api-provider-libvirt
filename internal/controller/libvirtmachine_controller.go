@@ -18,7 +18,10 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -61,6 +64,15 @@ type MachineScope struct {
 	MachineConfig    libvirtclient.MachineConfig
 	ReconcilerClient client.Client
 }
+
+const (
+	providerIDPrefix = "libvirt://"
+
+	// domainNameMaxLength keeps the domain name a valid DNS label, as it is also the DHCP host name.
+	domainNameMaxLength  = 63
+	domainNameHashLength = 6
+	domainNameSeparator  = "-"
+)
 
 const (
 	running = libvirtclient.DomainStateRunning
@@ -265,10 +277,9 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		scope.MachineConfig.UserData = cloudInitUserData
+		cfg.UserData = cloudInitUserData
 
-		info, err := r.Provider.CreateMachine(cfg)
-		if err != nil {
+		if err := r.Provider.CreateMachine(cfg); err != nil {
 			logger.Error(err, "Unable to create domain", "domain", cfg.DomainName)
 
 			conditions.Set(scope.LibvirtMachine, metav1.Condition{
@@ -281,8 +292,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		providerID := "libvirt://" + info.ID
-		scope.LibvirtMachine.Spec.ProviderID = &providerID
+		setProviderID(scope.LibvirtMachine)
 
 		conditions.Set(scope.LibvirtMachine, metav1.Condition{
 			Type:   infrav1.MachineCreatedCondition,
@@ -312,6 +322,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			return ctrl.Result{}, err
 		}
 
+		setProviderID(scope.LibvirtMachine)
 		scope.LibvirtMachine.Status.Ready = true
 		scope.LibvirtMachine.Status.Initialization.Provisioned = true
 
@@ -326,6 +337,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 			Message: "Domain is running",
 		})
 
+		setProviderID(scope.LibvirtMachine)
 		scope.LibvirtMachine.Status.Ready = true
 		scope.LibvirtMachine.Status.Initialization.Provisioned = true
 
@@ -397,7 +409,9 @@ func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine, libvirtCluster *in
 			DomainPool: libvirtCluster.Spec.DomainPool,
 			Network:    libvirtCluster.Spec.Network,
 		},
-		DomainName: libvirtMachine.Name,
+		DomainName: domainName(libvirtMachine),
+		Hostname:   libvirtMachine.Name,
+		DomainUUID: string(libvirtMachine.UID),
 		BaseImage:  libvirtMachine.Spec.Image,
 		MemoryMiB:  uint(libvirtMachine.Spec.MemoryMiB),
 		VCPU:       uint(libvirtMachine.Spec.VCPU),
@@ -424,4 +438,26 @@ func getCloudInitData(scope *MachineScope) ([]byte, error) {
 	}
 
 	return userData, nil
+}
+
+// domainName returns a host-wide unique libvirt domain name in the form <namespace>-<name>-<hash>.
+func domainName(libvirtMachine *infrav1.LibvirtMachine) string {
+	sum := sha256.Sum256([]byte(libvirtMachine.Namespace + "/" + libvirtMachine.Name))
+	hash := hex.EncodeToString(sum[:])[:domainNameHashLength]
+
+	// Dots are allowed in object names but not in a DNS label; the hash keeps the result unique.
+	name := strings.ReplaceAll(libvirtMachine.Name, ".", domainNameSeparator)
+	prefix := libvirtMachine.Namespace + domainNameSeparator + name
+	maxPrefixLength := domainNameMaxLength - len(domainNameSeparator) - domainNameHashLength
+	if len(prefix) > maxPrefixLength {
+		prefix = strings.TrimRight(prefix[:maxPrefixLength], domainNameSeparator)
+	}
+
+	return prefix + domainNameSeparator + hash
+}
+
+// setProviderID derives the provider ID from the LibvirtMachine UID, which is also the domain UUID.
+func setProviderID(libvirtMachine *infrav1.LibvirtMachine) {
+	providerID := providerIDPrefix + string(libvirtMachine.UID)
+	libvirtMachine.Spec.ProviderID = &providerID
 }

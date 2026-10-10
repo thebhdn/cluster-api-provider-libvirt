@@ -24,6 +24,10 @@ metadata:
   namespace: default
 spec:
   uri: qemu+tcp://libvirt.lab/system
+  # Required: a free address in the libvirt network, e.g. a kube-vip VIP.
+  controlPlaneEndpoint:
+    host: 192.168.122.10
+    port: 6443
   network: libvirt-lab
   basePool: capi-base-images
   domainPool: capi-vm-disks
