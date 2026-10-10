@@ -166,13 +166,19 @@ func isVolumeNotFound(err error) bool {
 func deleteVolume(conn *libvirt.Connect, poolName, volumeName string) error {
 	pool, err := conn.LookupStoragePoolByName(poolName)
 	if err != nil {
-		return nil
+		if isLibvirtErr(err, libvirt.ERR_NO_STORAGE_POOL) {
+			return nil
+		}
+		return fmt.Errorf("lookup storage-pool %s: %w", poolName, err)
 	}
 	defer pool.Free()
 
 	vol, err := pool.LookupStorageVolByName(volumeName)
 	if err != nil {
-		return nil
+		if isVolumeNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("lookup volume %s in pool %s: %w", volumeName, poolName, err)
 	}
 	defer vol.Free()
 

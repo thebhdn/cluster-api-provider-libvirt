@@ -23,7 +23,7 @@ import (
 type provider interface {
 	EnsureInfra(cfg libvirtclient.InfraConfig) error
 	GetMachineState(cfg libvirtclient.MachineConfig) (libvirtclient.DomainState, error)
-	CreateMachine(cfg libvirtclient.MachineConfig) (libvirtclient.DomainInfo, error)
+	CreateMachine(cfg libvirtclient.MachineConfig) error
 	StartMachine(cfg libvirtclient.MachineConfig) error
 	DeleteMachine(cfg libvirtclient.MachineConfig) error
 	GetMachineAddress(cfg libvirtclient.MachineConfig) (string, error)

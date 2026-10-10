@@ -51,6 +51,14 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 		})
 	})
 
+	ginkgo.Context("WithUUID", func() {
+		ginkgo.It("sets the domain UUID", func() {
+			domain := NewDomain("test-domain").WithUUID("0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10")
+
+			gomega.Expect(domain.domain.UUID).To(gomega.Equal("0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"))
+		})
+	})
+
 	ginkgo.Context("WithMemoryMiB", func() {
 		ginkgo.It("sets memory and unit", func() {
 			domain := NewDomain("test-domain").WithMemoryMiB(2048)

@@ -73,6 +73,11 @@ func NewDomain(name string) *DomainBuilder {
 	}
 }
 
+func (b *DomainBuilder) WithUUID(uuid string) *DomainBuilder {
+	b.domain.UUID = uuid
+	return b
+}
+
 func (b *DomainBuilder) WithMemoryMiB(memory uint) *DomainBuilder {
 	b.domain.Memory.Value = memory
 	b.domain.Memory.Unit = DefaultMemoryUnit

@@ -66,7 +66,7 @@ var _ = Describe("Provider error wrapping", func() {
 				DomainName: "test-machine",
 			}
 
-			_, err := provider.CreateMachine(cfg)
+			err := provider.CreateMachine(cfg)
 			Expect(err).NotTo(BeNil())
 			Expect(err.Error()).To(ContainSubstring("connect to libvirt host:"))
 		})
@@ -131,7 +131,7 @@ var _ = Describe("Provider methods with empty config", func() {
 	})
 
 	It("CreateMachine with empty config wraps connection error", func() {
-		_, err := NewProvider().CreateMachine(MachineConfig{InfraConfig: InfraConfig{URI: "qemu+tcp://nonexistent:1234/system"}})
+		err := NewProvider().CreateMachine(MachineConfig{InfraConfig: InfraConfig{URI: "qemu+tcp://nonexistent:1234/system"}})
 		Expect(err).NotTo(BeNil())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt host"))
 	})

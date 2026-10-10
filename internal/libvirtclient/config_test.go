@@ -30,6 +30,30 @@ var _ = Describe("MachineConfig accessors", func() {
 		})
 	})
 
+	When("instanceID is computed", func() {
+		It("returns the domain UUID when set", func() {
+			cfg := MachineConfig{DomainName: "test-machine", DomainUUID: "0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"}
+			Expect(cfg.instanceID()).To(Equal("0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"))
+		})
+
+		It("falls back to the domain name without a UUID", func() {
+			cfg := MachineConfig{DomainName: "test-machine"}
+			Expect(cfg.instanceID()).To(Equal("test-machine"))
+		})
+	})
+
+	When("hostname is computed", func() {
+		It("returns the configured hostname", func() {
+			cfg := MachineConfig{DomainName: "default-cp-0-3fa91c", Hostname: "cp-0"}
+			Expect(cfg.hostname()).To(Equal("cp-0"))
+		})
+
+		It("falls back to the domain name without a hostname", func() {
+			cfg := MachineConfig{DomainName: "default-cp-0-3fa91c"}
+			Expect(cfg.hostname()).To(Equal("default-cp-0-3fa91c"))
+		})
+	})
+
 	When("domainDiskName is computed", func() {
 		It("appends .qcow2 extension", func() {
 			cfg := MachineConfig{DomainName: "test-machine"}
@@ -142,7 +166,6 @@ var _ = Describe("MachineConfig embedding", func() {
 			MemoryMiB:  8192,
 			VCPU:       4,
 			DiskSize:   100,
-			DiskFormat: "qcow2",
 			UserData:   []byte("cloud-config data"),
 		}
 

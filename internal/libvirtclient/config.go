@@ -34,11 +34,12 @@ type MachineConfig struct {
 	InfraConfig
 
 	DomainName string
+	DomainUUID string
+	Hostname   string
 	BaseImage  string
 	MemoryMiB  uint
 	VCPU       uint
 	DiskSize   uint64
-	DiskFormat string
 	UserData   []byte
 }
 
@@ -53,6 +54,22 @@ func connect(uri string) (*libvirt.Connect, error) {
 
 func (c *MachineConfig) domainName() string {
 	return c.DomainName
+}
+
+// instanceID is the cloud-init instance ID, the domain UUID when known.
+func (c *MachineConfig) instanceID() string {
+	if c.DomainUUID == "" {
+		return c.DomainName
+	}
+	return c.DomainUUID
+}
+
+// hostname is the guest hostname, the domain name when not set.
+func (c *MachineConfig) hostname() string {
+	if c.Hostname == "" {
+		return c.DomainName
+	}
+	return c.Hostname
 }
 
 func (c *MachineConfig) domainDiskName() string {

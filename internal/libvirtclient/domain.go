@@ -18,7 +18,6 @@ package libvirtclient
 
 import (
 	"fmt"
-	"strconv"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirt "libvirt.org/go/libvirt"
@@ -33,48 +32,45 @@ const (
 	DomainStateUnknown  DomainState = "Unknown"
 )
 
-type DomainInfo struct {
-	ID string
-}
-
-func createDomain(conn *libvirt.Connect, cfg MachineConfig) (DomainInfo, error) {
+func createDomain(conn *libvirt.Connect, cfg MachineConfig) error {
 	domainPool, err := conn.LookupStoragePoolByName(cfg.DomainPool)
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("lookup domain disk pool %s: %w", cfg.DomainPool, err)
+		return fmt.Errorf("lookup domain disk pool %s: %w", cfg.DomainPool, err)
 	}
 	defer domainPool.Free()
 
 	basePool, err := conn.LookupStoragePoolByName(cfg.BasePool)
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("lookup base disk pool %s: %w", cfg.BasePool, err)
+		return fmt.Errorf("lookup base disk pool %s: %w", cfg.BasePool, err)
 	}
 	defer basePool.Free()
 
 	diskPath, err := createRootDisk(basePool, domainPool, cfg)
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("create base disk pool %s: %w", cfg.BasePool, err)
+		return fmt.Errorf("create base disk pool %s: %w", cfg.BasePool, err)
 	}
 
 	cloudISOPath, err := createISODisk(conn, domainPool, cfg)
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("create iso disk %s: %w", cfg.BasePool, err)
+		return fmt.Errorf("create iso disk %s: %w", cfg.BasePool, err)
 	}
 
 	mac := deriveDomainMAC(cfg.domainName())
 
 	network, err := conn.LookupNetworkByName(cfg.Network)
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("lookup network %s: %w", cfg.Network, err)
+		return fmt.Errorf("lookup network %s: %w", cfg.Network, err)
 	}
 	// errcheck: matches the repo-wide unchecked Free/Close pattern; the
 	// handle must outlive the reservation call.
 	defer network.Free() //nolint:errcheck
 
 	if _, err := reserveMachineIP(network, cfg.Network, cfg.domainName(), mac); err != nil {
-		return DomainInfo{}, err
+		return err
 	}
 
 	domainXML, err := build.NewDomain(cfg.domainName()).
+		WithUUID(cfg.DomainUUID).
 		WithMemoryMiB(cfg.memoryMiB()).
 		WithVCPU(cfg.vCPU()).
 		WithDiskFile(diskPath).
@@ -83,38 +79,33 @@ func createDomain(conn *libvirt.Connect, cfg MachineConfig) (DomainInfo, error) 
 		WithSerialConsole().
 		Marshal()
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("marshal domain XML: %w", err)
+		return fmt.Errorf("marshal domain XML: %w", err)
 	}
 
 	domain, err := conn.DomainDefineXML(domainXML)
 	if err != nil {
-		return DomainInfo{}, fmt.Errorf("define domain %s: %w", cfg.domainName(), err)
+		return fmt.Errorf("define domain %s: %w", cfg.domainName(), err)
 	}
 	defer domain.Free()
 
 	if err := domain.SetAutostart(true); err != nil {
-		return DomainInfo{}, fmt.Errorf("set domain autostart: %w", err)
+		return fmt.Errorf("set domain autostart: %w", err)
 	}
 
 	if err := domain.Create(); err != nil {
-		return DomainInfo{}, fmt.Errorf("create domain %s: %w", cfg.domainName(), err)
+		return fmt.Errorf("create domain %s: %w", cfg.domainName(), err)
 	}
 
-	domainInfo := DomainInfo{}
-	id, err := domain.GetID()
-	if err != nil {
-		return DomainInfo{}, fmt.Errorf("failed to get %s id: %w", cfg.domainName(), err)
-	}
-
-	domainInfo.ID = strconv.FormatUint(uint64(id), 10)
-
-	return domainInfo, nil
+	return nil
 }
 
 func deleteDomain(conn *libvirt.Connect, name string) error {
 	dom, err := conn.LookupDomainByName(name)
 	if err != nil {
-		return nil
+		if isLibvirtErr(err, libvirt.ERR_NO_DOMAIN) {
+			return nil
+		}
+		return fmt.Errorf("lookup domain %s: %w", name, err)
 	}
 	defer dom.Free()
 

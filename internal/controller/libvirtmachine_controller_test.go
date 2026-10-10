@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,6 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
@@ -223,6 +225,57 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		Entry("domain not found -> ready and provisioned after creation", libvirtclient.DomainStateNotFound, nil, true, true),
 	)
 
+	It("passes bootstrap user-data and sets the provider ID on creation", func() {
+		libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
+		Expect(k8sClient.Get(ctx, namespacedName, libvMachine)).To(Succeed())
+		controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
+
+		libvCluster := &infrastructurev1alpha1.LibvirtCluster{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, libvCluster)).To(Succeed())
+
+		infraReady := true
+		secretName := testClusterName + "-secret"
+		scope := &MachineScope{
+			ReconcilerClient: k8sClient,
+			Cluster: &clusterv1.Cluster{
+				Status: clusterv1.ClusterStatus{
+					Initialization: clusterv1.ClusterInitializationStatus{
+						InfrastructureProvisioned: &infraReady,
+					},
+				},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace},
+				Spec: clusterv1.MachineSpec{
+					Bootstrap: clusterv1.Bootstrap{DataSecretName: &secretName},
+				},
+			},
+			LibvirtCluster: libvCluster,
+			LibvirtMachine: libvMachine,
+			Ctx:            ctx,
+			MachineConfig:  newMachineConfig(libvMachine, libvCluster),
+		}
+
+		mockProvider := &MockProvider{}
+		mockProvider.SetMachineState(libvirtclient.DomainStateNotFound)
+		reconciler := &LibvirtMachineReconciler{
+			Client:   k8sClient,
+			Scheme:   k8sClient.Scheme(),
+			Provider: mockProvider,
+		}
+
+		_, err := reconciler.reconcileNormal(scope)
+		Expect(err).NotTo(HaveOccurred())
+
+		created := mockProvider.GetCreatedMachineConfig()
+		Expect(created).NotTo(BeNil())
+		Expect(string(created.UserData)).To(Equal("be metal my friend"))
+		Expect(created.DomainUUID).To(Equal(string(libvMachine.UID)))
+
+		Expect(libvMachine.Spec.ProviderID).NotTo(BeNil())
+		Expect(*libvMachine.Spec.ProviderID).To(Equal(providerIDPrefix + string(libvMachine.UID)))
+	})
+
 	It("should handle deletion correctly", func() {
 		By("calling reconcileDelete")
 		libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
@@ -330,4 +383,39 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			Expect(scope.LibvirtMachine.Status.Addresses).To(BeEmpty())
 		})
 	})
+})
+
+var _ = Describe("domainName", func() {
+	newMachine := func(namespace, name string) *infrastructurev1alpha1.LibvirtMachine {
+		return &infrastructurev1alpha1.LibvirtMachine{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name}}
+	}
+
+	It("joins namespace, name and a short hash", func() {
+		name := domainName(newMachine("default", "libvirt-xd-0"))
+
+		Expect(name).To(HavePrefix("default-libvirt-xd-0-"))
+		Expect(name).To(HaveLen(len("default-libvirt-xd-0-") + domainNameHashLength))
+	})
+
+	It("is stable for the same machine", func() {
+		Expect(domainName(newMachine("default", "cp-0"))).To(Equal(domainName(newMachine("default", "cp-0"))))
+	})
+
+	It("does not collide when the plain concatenation is equal", func() {
+		Expect(domainName(newMachine("a-b", "c"))).NotTo(Equal(domainName(newMachine("a", "b-c"))))
+	})
+
+	It("does not collide across namespaces", func() {
+		Expect(domainName(newMachine("tenant-a", "cp-0"))).NotTo(Equal(domainName(newMachine("tenant-b", "cp-0"))))
+	})
+
+	DescribeTable("always returns a valid DNS label",
+		func(namespace, name string) {
+			Expect(validation.IsDNS1123Label(domainName(newMachine(namespace, name)))).To(BeEmpty())
+		},
+		Entry("short names", "default", "cp-0"),
+		Entry("dotted name", "default", "node.example.com"),
+		Entry("long name", strings.Repeat("n", 63), strings.Repeat("m", 200)),
+		Entry("truncation lands on a dash", "default", strings.Repeat("a", 47)+"-"+strings.Repeat("b", 20)),
+	)
 })

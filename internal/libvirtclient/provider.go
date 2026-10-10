@@ -50,21 +50,14 @@ func (p *Provider) EnsureInfra(cfg InfraConfig) error {
 	return nil
 }
 
-func (p *Provider) CreateMachine(cfg MachineConfig) (DomainInfo, error) {
-	info := DomainInfo{}
-
+func (p *Provider) CreateMachine(cfg MachineConfig) error {
 	conn, err := connect(cfg.getURI())
 	if err != nil {
-		return info, fmt.Errorf("connect to libvirt host: %w", err)
+		return fmt.Errorf("connect to libvirt host: %w", err)
 	}
 	defer conn.Close()
 
-	info, err = createDomain(conn, cfg)
-	if err != nil {
-		return info, err
-	}
-
-	return info, nil
+	return createDomain(conn, cfg)
 }
 
 func (p *Provider) StartMachine(cfg MachineConfig) error {
@@ -74,7 +67,7 @@ func (p *Provider) StartMachine(cfg MachineConfig) error {
 	}
 	defer conn.Close()
 
-	domain, err := conn.LookupDomainByName(cfg.DomainName)
+	domain, err := conn.LookupDomainByName(cfg.domainName())
 	if err != nil {
 		return fmt.Errorf("lookup domain %s: %w", cfg.DomainName, err)
 	}
@@ -118,6 +111,10 @@ func (p *Provider) DeleteMachine(cfg MachineConfig) error {
 		return err
 	}
 
+	if err := deleteVolume(conn, cfg.domainPoolName(), cfg.isoDiskName()); err != nil {
+		return err
+	}
+
 	if err := p.releaseMachineReservation(conn, cfg); err != nil {
 		return err
 	}
@@ -147,6 +144,9 @@ func (p *Provider) GetMachineAddress(cfg MachineConfig) (string, error) {
 func (p *Provider) releaseMachineReservation(conn *libvirt.Connect, cfg MachineConfig) error {
 	network, err := conn.LookupNetworkByName(cfg.Network)
 	if err != nil {
+		if isLibvirtErr(err, libvirt.ERR_NO_NETWORK) {
+			return nil
+		}
 		return fmt.Errorf("lookup network %s: %w", cfg.Network, err)
 	}
 	defer network.Free() //nolint:errcheck

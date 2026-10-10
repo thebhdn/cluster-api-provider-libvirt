@@ -27,15 +27,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/predicates"
 
 	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -124,9 +128,14 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *LibvirtClusterReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager) error {
+func (r *LibvirtClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.LibvirtCluster{}).
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(ctx, infrav1.GroupVersion.WithKind("LibvirtCluster"), mgr.GetClient(), &infrav1.LibvirtCluster{})),
+			builder.WithPredicates(predicates.ClusterUnpaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
+		).
 		Named("libvirtcluster").
 		Complete(r)
 }
@@ -134,10 +143,37 @@ func (r *LibvirtClusterReconciler) SetupWithManager(_ context.Context, mgr ctrl.
 func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Result, error) {
 	logger := log.FromContext(scope.Ctx)
 
+	if annotations.IsPaused(scope.Cluster, scope.LibvirtCluster) {
+		logger.Info("Reconciliation is paused for this object")
+		return ctrl.Result{}, nil
+	}
+
 	if !controllerutil.ContainsFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer) {
 		controllerutil.AddFinalizer(scope.LibvirtCluster, infrav1.LibvirtClusterFinalizer)
 		return ctrl.Result{}, nil
 	}
+
+	// The Cluster or LibvirtCluster watch triggers a new reconcile once an endpoint is set.
+	if !hasControlPlaneEndpoint(scope) {
+		logger.Info("Waiting for a control plane endpoint on LibvirtCluster or Cluster")
+
+		conditions.Set(scope.LibvirtCluster, v1.Condition{
+			Type:    infrav1.ControlPlaneEndpointReadyCondition,
+			Status:  v1.ConditionFalse,
+			Reason:  infrav1.ControlPlaneEndpointMissingReason,
+			Message: "Set spec.controlPlaneEndpoint on the LibvirtCluster or the Cluster",
+		})
+		scope.LibvirtCluster.Status.Ready = false
+		scope.LibvirtCluster.Status.Initialization.Provisioned = false
+
+		return ctrl.Result{}, nil
+	}
+
+	conditions.Set(scope.LibvirtCluster, v1.Condition{
+		Type:   infrav1.ControlPlaneEndpointReadyCondition,
+		Status: v1.ConditionTrue,
+		Reason: infrav1.ControlPlaneEndpointReadyReason,
+	})
 
 	conditions.Set(scope.LibvirtCluster, v1.Condition{
 		Type:    infrav1.InfrastructureReadyCondition,
@@ -189,6 +225,11 @@ func (r *LibvirtClusterReconciler) reconcileDelete(scope *ClusterScope) (ctrl.Re
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// hasControlPlaneEndpoint reports whether the LibvirtCluster or its Cluster sets a valid endpoint.
+func hasControlPlaneEndpoint(scope *ClusterScope) bool {
+	return scope.LibvirtCluster.Spec.ControlPlaneEndpoint.IsValid() || scope.Cluster.Spec.ControlPlaneEndpoint.IsValid()
 }
 
 func newInfraConfig(libvirtCluster *infrav1.LibvirtCluster) libvirtclient.InfraConfig {

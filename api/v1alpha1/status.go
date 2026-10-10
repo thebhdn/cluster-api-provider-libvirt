@@ -37,6 +37,17 @@ const (
 )
 
 const (
+	// ControlPlaneEndpointReadyCondition reports whether a control plane endpoint is set.
+	ControlPlaneEndpointReadyCondition = "ControlPlaneEndpointReady"
+
+	// ControlPlaneEndpointReadyReason documents that a control plane endpoint is set.
+	ControlPlaneEndpointReadyReason = "ControlPlaneEndpointReady"
+
+	// ControlPlaneEndpointMissingReason documents that neither LibvirtCluster nor Cluster sets a control plane endpoint.
+	ControlPlaneEndpointMissingReason = "ControlPlaneEndpointMissing"
+)
+
+const (
 	// MachineCreatedCondition documents that the machine has been created.
 	MachineCreatedCondition = "MachineCreated"
 
