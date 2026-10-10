@@ -93,7 +93,8 @@ kubeletExtraArgs:
 ## Prepare the libvirt host
 
 The provider needs a libvirt host reachable from the management cluster, for example over
-`qemu+tcp://`, `qemu+tls://` or `qemu+ssh://`.
+`qemu+tls://`, `qemu+tcp://` or `qemu+libssh://`. The image is distroless and has no `ssh` binary,
+so use `qemu+libssh://` or `qemu+libssh2://` instead of `qemu+ssh://`.
 
 1. **Network:** a libvirt network with an IPv4 subnet and DHCP, for example the `default` NAT network.
    The provider reserves VM addresses inside the DHCP range, or in the last 200 addresses of the
@@ -173,8 +174,9 @@ make uninstall
 - Docker, for image builds
 
 The container image builds with the `libvirt_dlopen` tag (`GO_TAGS` in the [`Makefile`](Makefile)).
-In that mode, the binary loads `libvirt.so.0` at runtime, so the runtime image ships the libvirt
-client library.
+In that mode, the binary loads `libvirt.so.0` at runtime. The runtime image is
+`gcr.io/distroless/cc-debian13:nonroot` plus `libvirt.so.0` and the shared libraries it needs,
+copied from `debian:trixie-slim`. All stages use Debian 13, so the glibc versions match.
 
 ### Layout
 
