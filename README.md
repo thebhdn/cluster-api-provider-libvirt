@@ -22,13 +22,13 @@ The provider is a consumer of an existing libvirt host. An admin prepares the ne
 pools and the base images. The provider checks that they exist and creates VMs on top of them.
 
 ```
-Management cluster                          libvirt host
-┌───────────────────────────────┐           ┌──────────────────────────────────┐
-│ CAPI core + bootstrap provider│           │ network     (DHCP, e.g. NAT)     │
-│ cluster-api-provider-libvirt ─┼─ libvirt ─┼▶ basePool   (base images, qcow2) │
-│   LibvirtCluster controller   │    API    │  domainPool (VM disks, ISOs)     │
-│   LibvirtMachine controller   │           │  domains    (one per machine)    │
-└───────────────────────────────┘           └──────────────────────────────────┘
+Management cluster                             libvirt host
+┌────────────────────────────────┐             ┌──────────────────────────────────┐
+│ CAPI core + bootstrap provider │             │ network     (DHCP, e.g. NAT)     │
+│ cluster-api-provider-libvirt   │──libvirt──> │ basePool    (base images, qcow2) │
+│   LibvirtCluster controller    │     API     │ domainPool  (VM disks, ISOs)     │
+│   LibvirtMachine controller    │             │ domains     (one per machine)    │
+└────────────────────────────────┘             └──────────────────────────────────┘
 ```
 
 ### LibvirtCluster
