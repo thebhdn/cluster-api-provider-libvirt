@@ -156,6 +156,45 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
+##@ Release
+
+# VERSION is the provider release version. Its major.minor must be a release series in metadata.yaml.
+VERSION ?= v0.1.0
+OUT_DIR ?= $(shell pwd)/out
+# RELEASE_DIR holds the files to attach to a release: components, metadata and cluster template.
+RELEASE_DIR ?= $(OUT_DIR)/release
+# CLUSTERCTL_REPO_DIR is a local clusterctl repository, so releases can be tested without GitHub.
+CLUSTERCTL_REPO_DIR ?= $(OUT_DIR)/repository
+CLUSTERCTL_PROVIDER_DIR = $(CLUSTERCTL_REPO_DIR)/infrastructure-libvirt/$(VERSION)
+CLUSTERCTL_CONFIG = $(CLUSTERCTL_REPO_DIR)/clusterctl.yaml
+RELEASE_OVERLAY_DIR = $(OUT_DIR)/kustomize
+
+.PHONY: release-manifests
+release-manifests: manifests kustomize ## Build infrastructure-components.yaml, metadata.yaml and cluster-template.yaml into RELEASE_DIR for IMG.
+	rm -rf "$(RELEASE_OVERLAY_DIR)" "$(RELEASE_DIR)"
+	mkdir -p "$(RELEASE_OVERLAY_DIR)" "$(RELEASE_DIR)"
+	cd "$(RELEASE_OVERLAY_DIR)" && "$(KUSTOMIZE)" create --resources "$$(realpath --relative-to=. "$(CURDIR)/config/default")"
+	cd "$(RELEASE_OVERLAY_DIR)" && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build "$(RELEASE_OVERLAY_DIR)" > "$(RELEASE_DIR)/infrastructure-components.yaml"
+	cp metadata.yaml templates/cluster-template.yaml "$(RELEASE_DIR)/"
+	@echo "Release files for $(VERSION) with image $(IMG) are in $(RELEASE_DIR)"
+
+.PHONY: release
+release: docker-build docker-push release-manifests ## Build and push IMG, then build the release files.
+
+.PHONY: clusterctl-repo
+clusterctl-repo: release-manifests ## Put the release files in a local clusterctl repository and write its clusterctl.yaml.
+	rm -rf "$(CLUSTERCTL_PROVIDER_DIR)"
+	mkdir -p "$(CLUSTERCTL_PROVIDER_DIR)"
+	cp "$(RELEASE_DIR)"/* "$(CLUSTERCTL_PROVIDER_DIR)/"
+	CLUSTERCTL_REPO_DIR="$(CLUSTERCTL_REPO_DIR)" VERSION="$(VERSION)" \
+		envsubst '$${CLUSTERCTL_REPO_DIR} $${VERSION}' < hack/clusterctl-local.yaml > "$(CLUSTERCTL_CONFIG)"
+	@echo "Install with: clusterctl init --config $(CLUSTERCTL_CONFIG) --infrastructure libvirt:$(VERSION)"
+
+.PHONY: clean-release
+clean-release: ## Remove the release files and the local clusterctl repository.
+	rm -rf "$(OUT_DIR)"
+
 ##@ Deployment
 
 ifndef ignore-not-found

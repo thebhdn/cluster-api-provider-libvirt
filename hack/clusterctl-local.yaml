@@ -1,0 +1,5 @@
+# clusterctl config for the local repository built by `make clusterctl-repo`.
+providers:
+  - name: libvirt
+    type: InfrastructureProvider
+    url: ${CLUSTERCTL_REPO_DIR}/infrastructure-libvirt/${VERSION}/infrastructure-components.yaml

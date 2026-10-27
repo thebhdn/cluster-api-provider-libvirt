@@ -143,11 +143,66 @@ spec:
 ```
 
 Full examples with the matching CAPI `Cluster` and `Machine` are in [`templates/`](templates/).
+[`templates/cluster-template.yaml`](templates/cluster-template.yaml) is the full cluster used by
+`clusterctl generate cluster`.
 
 ## Install
 
-The provider is listed for `clusterctl` in [`metadata.yaml`](metadata.yaml) (release series `0.1`,
-contract `v1beta2`). To install from source into a cluster that already runs CAPI:
+### With clusterctl
+
+Releases are built locally with `make`. There is no CI yet. The release series and contract are in
+[`metadata.yaml`](metadata.yaml) (`0.1`, `v1beta2`), so `VERSION` must be `v0.1.x`.
+
+```sh
+make release IMG=<registry>/cluster-api-provider-libvirt:v0.1.0 VERSION=v0.1.0
+```
+
+This builds and pushes the image, then writes the release files to `out/release/`:
+
+| File | Content |
+|---|---|
+| `infrastructure-components.yaml` | CRDs, RBAC and the controller Deployment, using `IMG` |
+| `metadata.yaml` | Release series for `clusterctl` |
+| `cluster-template.yaml` | Default cluster flavor |
+
+`make release-manifests` writes the same files without building the image. To publish a release,
+attach these three files to a GitHub release with the tag `VERSION`.
+
+To use them without a GitHub release, build a local `clusterctl` repository:
+
+```sh
+make clusterctl-repo IMG=<registry>/cluster-api-provider-libvirt:v0.1.0 VERSION=v0.1.0
+clusterctl init --config out/repository/clusterctl.yaml --infrastructure libvirt:v0.1.0
+```
+
+The management cluster must be able to pull `IMG`. With kind, `kind load docker-image` works too.
+
+### Create a cluster
+
+```sh
+export LIBVIRT_URI=qemu+tcp://libvirt.lab/system
+export LIBVIRT_BASE_POOL=capi-base-images
+export LIBVIRT_DOMAIN_POOL=capi-vm-disks
+export LIBVIRT_IMAGE=ubuntu-noble-base.qcow2
+export CONTROL_PLANE_ENDPOINT_IP=192.168.122.10
+export KUBERNETES_VERSION=v1.34.1
+
+clusterctl generate cluster dev --config out/repository/clusterctl.yaml \
+  --infrastructure libvirt:v0.1.0 --worker-machine-count 1 | kubectl apply -f -
+```
+
+Run `clusterctl generate cluster dev ... --list-variables` to see all variables and their defaults.
+The template runs [kube-vip](https://kube-vip.io/) as a static pod on the control plane nodes to
+hold `CONTROL_PLANE_ENDPOINT_IP`:
+
+- `CONTROL_PLANE_ENDPOINT_IP` must be a free address in the libvirt network, outside the DHCP range.
+- `KUBE_VIP_INTERFACE` (default `ens3`) must match the NIC name in the guest image.
+- `LIBVIRT_IMAGE` must contain the kubeadm, kubelet and containerd versions for `KUBERNETES_VERSION`.
+- No CNI is installed. Install one that matches `POD_CIDR` (default `10.244.0.0/16`).
+
+### From source
+
+To install from source into a cluster that already runs CAPI:
 
 ```sh
 make docker-build docker-push IMG=<registry>/cluster-api-provider-libvirt:<tag>
