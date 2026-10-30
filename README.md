@@ -56,7 +56,10 @@ On delete, it only removes the finalizer. Nothing on the host is changed.
    - defines the domain, turns on autostart and starts it
 3. If the domain is stopped, it starts it.
 4. If the domain is running, it reads the VM address from the network's DHCP leases into
-   `status.addresses`.
+   `status.addresses`. It checks the domain again every minute, so changes on the host are seen.
+5. If the domain was created before but is now gone from the host, it does not recreate it. It
+   sets `DomainRunning=False` with reason `DomainNotFound`. Delete the `Machine` (or let a
+   `MachineHealthCheck` do it) to get a new one.
 
 On delete, it removes the domain, the root disk, the cloud-init ISO and the DHCP reservation.
 
@@ -90,7 +93,7 @@ kubeletExtraArgs:
 | `LibvirtMachine` | `InfrastructureReady` | The cluster infrastructure is provisioned |
 | `LibvirtMachine` | `DomainProvisioningReady` | The domain is being created or creation failed |
 | `LibvirtMachine` | `MachineCreated` | The domain was created |
-| `LibvirtMachine` | `DomainRunning` | The domain is running |
+| `LibvirtMachine` | `DomainRunning` | The domain is running (reasons: `DomainNotRunning`, `DomainNotFound`) |
 
 ## Prepare the libvirt host
 

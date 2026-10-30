@@ -69,4 +69,6 @@ const (
 	DomainRunningReason = "DomainRunning"
 	// DomainNotRunningReason documents that the Domain is not yet running.
 	DomainNotRunningReason = "DomainNotRunning"
+	// DomainNotFoundReason documents that a provisioned Domain was deleted on the libvirt host.
+	DomainNotFoundReason = "DomainNotFound"
 )
