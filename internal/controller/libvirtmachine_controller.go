@@ -366,13 +366,16 @@ func (r *LibvirtMachineReconciler) observeMachineAddress(scope *MachineScope) (c
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
-	if address != "" {
-		scope.LibvirtMachine.Status.Addresses = []clusterv1.MachineAddress{
-			{
-				Type:    clusterv1.MachineInternalIP,
-				Address: address,
-			},
-		}
+	if address == "" {
+		logger.Info("Waiting for a DHCP lease", "domain", scope.MachineConfig.DomainName)
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
+
+	scope.LibvirtMachine.Status.Addresses = []clusterv1.MachineAddress{
+		{
+			Type:    clusterv1.MachineInternalIP,
+			Address: address,
+		},
 	}
 
 	return ctrl.Result{}, nil

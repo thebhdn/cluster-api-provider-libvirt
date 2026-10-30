@@ -14,7 +14,9 @@ It implements the CAPI `v1beta2` infrastructure contract with two resources in t
 `LibvirtClusterTemplate` and `LibvirtMachineTemplate` are also available, for use with ClusterClass
 and MachineDeployments.
 
-> **Status:** proof of concept. The API is `v1alpha1` and may change.
+> **Status:** proof of concept for development and testing, not for production. All machines of a
+> cluster run on one libvirt host, and failure domains are not supported. The API is `v1alpha1`
+> and may change.
 
 ## How it works
 
@@ -260,6 +262,8 @@ tests skip themselves when libvirt is not available.
 
 ## Known limitations
 
+- One libvirt host per cluster. Failure domains are not supported, so all machines run on the
+  same host.
 - Networks and storage pools are not created or deleted by the provider.
 - VMs boot from a prepared base image in `basePool`. Images cannot be loaded from a URL yet.
 - One NIC per VM, on a libvirt network with DHCP. Static IPs are not supported yet.

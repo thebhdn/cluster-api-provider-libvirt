@@ -197,6 +197,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			mockProvider := reconciler.Provider.(*MockProvider)
 			mockProvider.SetMachineState(machineState)
 			mockProvider.SetGetMachineStateErr(mockErr)
+			mockProvider.SetMachineAddress("192.168.122.50")
 
 			// Call reconcileNormal directly (bypasses owner-check in Reconcile entry point)
 			result, err := reconciler.reconcileNormal(scope)
@@ -381,6 +382,29 @@ var _ = Describe("LibvirtMachine Controller", func() {
 
 			Expect(scope.LibvirtMachine.Status.Ready).To(BeTrue())
 			Expect(scope.LibvirtMachine.Status.Addresses).To(BeEmpty())
+		})
+
+		It("requeues until the DHCP lease shows up", func() {
+			reconciler := &LibvirtMachineReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Provider: mockProvider,
+			}
+
+			scope := buildRunningScope()
+			result, err := reconciler.reconcileNormal(scope)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).ToNot(BeZero())
+			Expect(scope.LibvirtMachine.Status.Ready).To(BeTrue())
+			Expect(scope.LibvirtMachine.Status.Addresses).To(BeEmpty())
+
+			mockProvider.SetMachineAddress("192.168.122.56")
+
+			result, err = reconciler.reconcileNormal(scope)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(scope.LibvirtMachine.Status.Addresses).To(HaveLen(1))
+			Expect(scope.LibvirtMachine.Status.Addresses[0].Address).To(Equal("192.168.122.56"))
 		})
 	})
 })
