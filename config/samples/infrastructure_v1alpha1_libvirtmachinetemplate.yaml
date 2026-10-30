@@ -6,4 +6,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: libvirtmachinetemplate-sample
 spec:
-  # TODO(user): Add fields here
+  template:
+    spec:
+      vcpu: 2
+      memoryMiB: 2048
+      diskGiB: 20
+      image: ubuntu-noble-base.qcow2

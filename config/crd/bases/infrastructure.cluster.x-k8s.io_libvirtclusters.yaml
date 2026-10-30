@@ -14,7 +14,27 @@ spec:
     singular: libvirtcluster
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Cluster this LibvirtCluster belongs to
+      jsonPath: .metadata.labels['cluster\.x-k8s\.io/cluster-name']
+      name: Cluster
+      type: string
+    - description: Cluster infrastructure is ready
+      jsonPath: .status.initialization.provisioned
+      name: Provisioned
+      type: boolean
+    - description: libvirt connection URI
+      jsonPath: .spec.uri
+      name: URI
+      type: string
+    - description: Control plane endpoint host
+      jsonPath: .spec.controlPlaneEndpoint.host
+      name: Endpoint
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: LibvirtCluster is the Schema for the libvirtclusters API
@@ -40,6 +60,8 @@ spec:
             description: spec defines the desired state of LibvirtCluster
             properties:
               basePool:
+                description: BasePool is the storage pool that holds the base images
+                minLength: 1
                 type: string
               controlPlaneEndpoint:
                 description: ControlPlaneEndpoint is the endpoint used to reach the
@@ -59,14 +81,25 @@ spec:
                     type: integer
                 type: object
               domainPool:
+                description: DomainPool is the storage pool for VM disks and cloud-init
+                  ISOs
+                minLength: 1
                 type: string
               network:
+                description: Network is the libvirt network the VMs are attached to
+                minLength: 1
                 type: string
               uri:
                 description: |-
                   URI is the libvirt connection URI
                   Example: qemu+tcp://libvirt.io/system
+                minLength: 1
                 type: string
+            required:
+            - basePool
+            - domainPool
+            - network
+            - uri
             type: object
           status:
             description: status defines the observed state of LibvirtCluster

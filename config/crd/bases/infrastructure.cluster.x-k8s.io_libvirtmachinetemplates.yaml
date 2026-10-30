@@ -72,25 +72,50 @@ spec:
                     description: Spec is the LibvirtMachine spec.
                     properties:
                       diskGiB:
+                        default: 20
                         description: DiskGiB is Domain disk size in GiB
                         format: int32
+                        minimum: 1
                         type: integer
+                        x-kubernetes-validations:
+                        - message: diskGiB is immutable
+                          rule: self == oldSelf
                       image:
-                        description: Image is the base image path or URL
+                        description: Image is the name of the base image volume in
+                          the LibvirtCluster basePool
+                        minLength: 1
                         type: string
+                        x-kubernetes-validations:
+                        - message: image is immutable
+                          rule: self == oldSelf
                       memoryMiB:
+                        default: 1024
                         description: MemoryMiB is Domain memory in MiB
                         format: int32
+                        minimum: 256
                         type: integer
+                        x-kubernetes-validations:
+                        - message: memoryMiB is immutable
+                          rule: self == oldSelf
                       providerID:
                         description: |-
-                          ProviderID is the unique identifier for the machine
-                          Example: libvirt://default/foo-control-plane-0
+                          ProviderID is the unique identifier for the machine, set by the controller
+                          Example: libvirt://3f1c0a52-6b3e-4c51-9a0e-8d7f4e2b1c90
                         type: string
+                        x-kubernetes-validations:
+                        - message: providerID is immutable once set
+                          rule: self == oldSelf
                       vcpu:
+                        default: 1
                         description: VCPU is the number of virtual CPUs
                         format: int32
+                        minimum: 1
                         type: integer
+                        x-kubernetes-validations:
+                        - message: vcpu is immutable
+                          rule: self == oldSelf
+                    required:
+                    - image
                     type: object
                 required:
                 - spec

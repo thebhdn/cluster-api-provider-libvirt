@@ -57,12 +57,11 @@ var _ = Describe("LibvirtCluster Controller", func() {
 				Namespace:  testNamespace,
 				Finalizers: []string{infrastructurev1alpha1.LibvirtClusterFinalizer},
 			},
-			Spec: infrastructurev1alpha1.LibvirtClusterSpec{
-				ControlPlaneEndpoint: clusterv1.APIEndpoint{
-					Host: "localhost",
-					Port: 6443,
-				},
-			},
+			Spec: newTestLibvirtClusterSpec(),
+		}
+		cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
+			Host: "localhost",
+			Port: 6443,
 		}
 		err := k8sClient.Create(ctx, cluster)
 		Expect(err).NotTo(HaveOccurred())
