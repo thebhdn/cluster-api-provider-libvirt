@@ -23,26 +23,38 @@ import (
 
 // LibvirtMachineSpec defines the desired state of LibvirtMachine
 type LibvirtMachineSpec struct {
-	// ProviderID is the unique identifier for the machine
-	// Example: libvirt://default/foo-control-plane-0
+	// ProviderID is the unique identifier for the machine, set by the controller
+	// Example: libvirt://3f1c0a52-6b3e-4c51-9a0e-8d7f4e2b1c90
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="providerID is immutable once set"
 	ProviderID *string `json:"providerID,omitempty"`
 
 	// VCPU is the number of virtual CPUs
 	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="vcpu is immutable"
 	VCPU int32 `json:"vcpu,omitempty"`
 
 	// MemoryMiB is Domain memory in MiB
 	// +optional
+	// +kubebuilder:default=1024
+	// +kubebuilder:validation:Minimum=256
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="memoryMiB is immutable"
 	MemoryMiB int32 `json:"memoryMiB,omitempty"`
 
 	// DiskGiB is Domain disk size in GiB
 	// +optional
+	// +kubebuilder:default=20
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="diskGiB is immutable"
 	DiskGiB int32 `json:"diskGiB,omitempty"`
 
-	// Image is the base image path or URL
-	// +optional
-	Image string `json:"image,omitempty"`
+	// Image is the name of the base image volume in the LibvirtCluster basePool
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="image is immutable"
+	Image string `json:"image"`
 }
 
 // LibvirtMachineStatus defines the observed state of LibvirtMachine.
@@ -70,6 +82,12 @@ type LibvirtMachineInitializationStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster this LibvirtMachine belongs to"
+// +kubebuilder:printcolumn:name="Provisioned",type="boolean",JSONPath=".status.initialization.provisioned",description="Domain was created"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=`.status.conditions[?(@.type=="DomainRunning")].reason`,description="Domain state on the libvirt host"
+// +kubebuilder:printcolumn:name="Address",type="string",JSONPath=".status.addresses[0].address",description="Domain IP address"
+// +kubebuilder:printcolumn:name="ProviderID",type="string",JSONPath=".spec.providerID",description="Provider ID of the machine",priority=1
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // LibvirtMachine is the Schema for the libvirtmachines API
 type LibvirtMachine struct {

@@ -25,21 +25,28 @@ import (
 type LibvirtClusterSpec struct {
 	// URI is the libvirt connection URI
 	// Example: qemu+tcp://libvirt.io/system
-	// +optional
-	URI string `json:"uri,omitempty"`
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	URI string `json:"uri"`
 
 	// ControlPlaneEndpoint is the endpoint used to reach the workload cluster API server
 	// +optional
-	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty,omitzero"`
 
-	// +optional
-	BasePool string `json:"basePool,omitempty"`
+	// BasePool is the storage pool that holds the base images
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	BasePool string `json:"basePool"`
 
-	// +optional
-	DomainPool string `json:"domainPool,omitempty"`
+	// DomainPool is the storage pool for VM disks and cloud-init ISOs
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	DomainPool string `json:"domainPool"`
 
-	// +optional
-	Network string `json:"network,omitempty"`
+	// Network is the libvirt network the VMs are attached to
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Network string `json:"network"`
 }
 
 // LibvirtClusterStatus defines the observed state of LibvirtCluster
@@ -63,6 +70,11 @@ type LibvirtClusterInitializationStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster this LibvirtCluster belongs to"
+// +kubebuilder:printcolumn:name="Provisioned",type="boolean",JSONPath=".status.initialization.provisioned",description="Cluster infrastructure is ready"
+// +kubebuilder:printcolumn:name="URI",type="string",JSONPath=".spec.uri",description="libvirt connection URI"
+// +kubebuilder:printcolumn:name="Endpoint",type="string",JSONPath=".spec.controlPlaneEndpoint.host",description="Control plane endpoint host"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // LibvirtCluster is the Schema for the libvirtclusters API
 type LibvirtCluster struct {

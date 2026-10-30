@@ -72,6 +72,9 @@ spec:
                     description: Spec is the LibvirtCluster spec.
                     properties:
                       basePool:
+                        description: BasePool is the storage pool that holds the base
+                          images
+                        minLength: 1
                         type: string
                       controlPlaneEndpoint:
                         description: ControlPlaneEndpoint is the endpoint used to
@@ -93,14 +96,26 @@ spec:
                             type: integer
                         type: object
                       domainPool:
+                        description: DomainPool is the storage pool for VM disks and
+                          cloud-init ISOs
+                        minLength: 1
                         type: string
                       network:
+                        description: Network is the libvirt network the VMs are attached
+                          to
+                        minLength: 1
                         type: string
                       uri:
                         description: |-
                           URI is the libvirt connection URI
                           Example: qemu+tcp://libvirt.io/system
+                        minLength: 1
                         type: string
+                    required:
+                    - basePool
+                    - domainPool
+                    - network
+                    - uri
                     type: object
                 required:
                 - spec
