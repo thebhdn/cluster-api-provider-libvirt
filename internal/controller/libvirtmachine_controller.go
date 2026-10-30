@@ -72,6 +72,9 @@ const (
 	domainNameMaxLength  = 63
 	domainNameHashLength = 6
 	domainNameSeparator  = "-"
+
+	// domainStateCheckInterval is how often a provisioned domain is checked for changes made on the host.
+	domainStateCheckInterval = 1 * time.Minute
 )
 
 const (
@@ -250,6 +253,10 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 	switch state {
 	case missing:
+		if scope.LibvirtMachine.Spec.ProviderID != nil {
+			return r.reconcileLostDomain(scope)
+		}
+
 		logger.Info("domain doesn't exist, creating....", "domain", cfg.DomainName)
 
 		scope.LibvirtMachine.Status.Ready = false
@@ -309,6 +316,13 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 
 		scope.LibvirtMachine.Status.Ready = false
 
+		conditions.Set(scope.LibvirtMachine, metav1.Condition{
+			Type:    infrav1.DomainRunningCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  infrav1.DomainNotRunningReason,
+			Message: "Domain is stopped, starting it",
+		})
+
 		if err := r.Provider.StartMachine(cfg); err != nil {
 			logger.Error(err, "Unable to start domain", "domain", cfg.DomainName)
 
@@ -326,7 +340,7 @@ func (r *LibvirtMachineReconciler) reconcileNormal(scope *MachineScope) (ctrl.Re
 		scope.LibvirtMachine.Status.Ready = true
 		scope.LibvirtMachine.Status.Initialization.Provisioned = true
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	case running:
 		logger.Info("Domain is running", "domain", cfg.DomainName)
 
@@ -378,7 +392,26 @@ func (r *LibvirtMachineReconciler) observeMachineAddress(scope *MachineScope) (c
 		},
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: domainStateCheckInterval}, nil
+}
+
+// reconcileLostDomain handles a provisioned machine whose domain was deleted on the host.
+// The domain is not recreated, because the bootstrap data is single use, so the Machine must be replaced.
+func (r *LibvirtMachineReconciler) reconcileLostDomain(scope *MachineScope) (ctrl.Result, error) {
+	logger := log.FromContext(scope.Ctx)
+	logger.Info("Domain was deleted on the libvirt host, the Machine must be replaced", "domain", scope.MachineConfig.DomainName)
+
+	scope.LibvirtMachine.Status.Ready = false
+	scope.LibvirtMachine.Status.Addresses = nil
+
+	conditions.Set(scope.LibvirtMachine, metav1.Condition{
+		Type:    infrav1.DomainRunningCondition,
+		Status:  metav1.ConditionFalse,
+		Reason:  infrav1.DomainNotFoundReason,
+		Message: fmt.Sprintf("Domain %s was deleted on the libvirt host, delete the Machine to replace it", scope.MachineConfig.DomainName),
+	})
+
+	return ctrl.Result{RequeueAfter: domainStateCheckInterval}, nil
 }
 
 func (r *LibvirtMachineReconciler) reconcileDelete(scope *MachineScope) (ctrl.Result, error) {

@@ -20,11 +20,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -139,7 +141,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 
 	DescribeTable(
 		"reconciliation with mock provider",
-		func(machineState libvirtclient.DomainState, mockErr error, expectReady bool, expectProvisioned bool) {
+		func(machineState libvirtclient.DomainState, mockErr error, expectReady bool, expectProvisioned bool, expectRequeue time.Duration) {
 			By("calling reconcileNormal")
 
 			// Get the libvMachine LibvirtMachine
@@ -202,7 +204,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			// Call reconcileNormal directly (bypasses owner-check in Reconcile entry point)
 			result, err := reconciler.reconcileNormal(scope)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
+			Expect(result.RequeueAfter).To(Equal(expectRequeue))
 
 			// Verify status was libvMachine
 			Expect(libvMachine.Status.Ready).To(Equal(expectReady), "status.ready mismatch")
@@ -220,10 +222,17 @@ var _ = Describe("LibvirtMachine Controller", func() {
 				}
 				Expect(found).To(BeTrue(), "DomainRunning condition should be True when machine is running")
 			}
+
+			if machineState == libvirtclient.DomainStateStopped {
+				condition := meta.FindStatusCondition(libvMachine.Status.Conditions, infrastructurev1alpha1.DomainRunningCondition)
+				Expect(condition).NotTo(BeNil())
+				Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+				Expect(condition.Reason).To(Equal(infrastructurev1alpha1.DomainNotRunningReason))
+			}
 		},
-		Entry("domain running -> ready and provisioned", libvirtclient.DomainStateRunning, nil, true, true),
-		Entry("domain stopped -> started -> ready -> provisioned", libvirtclient.DomainStateStopped, nil, true, true),
-		Entry("domain not found -> ready and provisioned after creation", libvirtclient.DomainStateNotFound, nil, true, true),
+		Entry("domain running -> ready and provisioned", libvirtclient.DomainStateRunning, nil, true, true, domainStateCheckInterval),
+		Entry("domain stopped -> started -> ready -> provisioned", libvirtclient.DomainStateStopped, nil, true, true, requeueTimeShort),
+		Entry("domain not found -> ready and provisioned after creation", libvirtclient.DomainStateNotFound, nil, true, true, time.Duration(0)),
 	)
 
 	It("passes bootstrap user-data and sets the provider ID on creation", func() {
@@ -275,6 +284,59 @@ var _ = Describe("LibvirtMachine Controller", func() {
 
 		Expect(libvMachine.Spec.ProviderID).NotTo(BeNil())
 		Expect(*libvMachine.Spec.ProviderID).To(Equal(providerIDPrefix + string(libvMachine.UID)))
+	})
+
+	It("does not recreate a provisioned domain that was deleted on the host", func() {
+		libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
+		Expect(k8sClient.Get(ctx, namespacedName, libvMachine)).To(Succeed())
+		controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
+		setProviderID(libvMachine)
+		libvMachine.Status.Initialization.Provisioned = true
+		libvMachine.Status.Addresses = []clusterv1.MachineAddress{
+			{Type: clusterv1.MachineInternalIP, Address: "192.168.122.57"},
+		}
+
+		libvCluster := &infrastructurev1alpha1.LibvirtCluster{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, libvCluster)).To(Succeed())
+
+		infraReady := true
+		scope := &MachineScope{
+			ReconcilerClient: k8sClient,
+			Cluster: &clusterv1.Cluster{
+				Status: clusterv1.ClusterStatus{
+					Initialization: clusterv1.ClusterInitializationStatus{
+						InfrastructureProvisioned: &infraReady,
+					},
+				},
+			},
+			Machine:        &clusterv1.Machine{},
+			LibvirtCluster: libvCluster,
+			LibvirtMachine: libvMachine,
+			Ctx:            ctx,
+			MachineConfig:  newMachineConfig(libvMachine, libvCluster),
+		}
+
+		mockProvider := &MockProvider{}
+		mockProvider.SetMachineState(libvirtclient.DomainStateNotFound)
+		reconciler := &LibvirtMachineReconciler{
+			Client:   k8sClient,
+			Scheme:   k8sClient.Scheme(),
+			Provider: mockProvider,
+		}
+
+		result, err := reconciler.reconcileNormal(scope)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.RequeueAfter).To(Equal(domainStateCheckInterval))
+
+		Expect(mockProvider.GetCreatedMachineConfig()).To(BeNil())
+		Expect(libvMachine.Status.Ready).To(BeFalse())
+		Expect(libvMachine.Status.Initialization.Provisioned).To(BeTrue())
+		Expect(libvMachine.Status.Addresses).To(BeEmpty())
+
+		condition := meta.FindStatusCondition(libvMachine.Status.Conditions, infrastructurev1alpha1.DomainRunningCondition)
+		Expect(condition).NotTo(BeNil())
+		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(condition.Reason).To(Equal(infrastructurev1alpha1.DomainNotFoundReason))
 	})
 
 	It("should handle deletion correctly", func() {
@@ -358,7 +420,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 			scope := buildRunningScope()
 			result, err := reconciler.reconcileNormal(scope)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
+			Expect(result.RequeueAfter).To(Equal(domainStateCheckInterval))
 
 			Expect(scope.LibvirtMachine.Status.Ready).To(BeTrue())
 			Expect(scope.LibvirtMachine.Status.Addresses).To(HaveLen(1))
@@ -402,7 +464,7 @@ var _ = Describe("LibvirtMachine Controller", func() {
 
 			result, err = reconciler.reconcileNormal(scope)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
+			Expect(result.RequeueAfter).To(Equal(domainStateCheckInterval))
 			Expect(scope.LibvirtMachine.Status.Addresses).To(HaveLen(1))
 			Expect(scope.LibvirtMachine.Status.Addresses[0].Address).To(Equal("192.168.122.56"))
 		})
