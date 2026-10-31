@@ -47,7 +47,30 @@ type LibvirtClusterSpec struct {
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	Network string `json:"network"`
+
+	// CredentialsRef points to a Secret in the same namespace with the client credentials for a
+	// qemu+tls, qemu+libssh or qemu+libssh2 URI. It overrides the controller-wide credentials Secret.
+	// +optional
+	CredentialsRef *CredentialsReference `json:"credentialsRef,omitempty"`
 }
+
+// CredentialsReference points to a Secret in the same namespace.
+// For TLS the Secret holds ca.crt, tls.crt and tls.key; for SSH it holds ssh-privatekey and known_hosts.
+type CredentialsReference struct {
+	// Name of the Secret
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// Secret keys read from CredentialsRef in addition to the corev1 TLS and SSH keys.
+const (
+	// CredentialsCACertKey is the CA certificate that signed the libvirt server certificate.
+	CredentialsCACertKey = "ca.crt"
+
+	// CredentialsKnownHostsKey is an OpenSSH known_hosts file with the libvirt host key.
+	CredentialsKnownHostsKey = "known_hosts"
+)
 
 // LibvirtClusterStatus defines the observed state of LibvirtCluster
 type LibvirtClusterStatus struct {

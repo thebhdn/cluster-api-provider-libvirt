@@ -34,6 +34,9 @@ clusterctl init --config out/repository/clusterctl.yaml --infrastructure libvirt
 
 The management cluster must be able to pull `IMG`. With kind, `kind load docker-image` works too.
 
+For `qemu+tls://` or `qemu+libssh://`, set the credential env vars before `clusterctl init`, see
+[host-setup.md](host-setup.md#credentials).
+
 ## Create a cluster
 
 ```sh

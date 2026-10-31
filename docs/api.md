@@ -34,6 +34,7 @@ spec:
 | `basePool` | yes | Storage pool with the base images |
 | `domainPool` | yes | Storage pool for VM disks and cloud-init ISOs |
 | `controlPlaneEndpoint` | no | API server endpoint. Can be set here or on the `Cluster` |
+| `credentialsRef.name` | no | Secret with TLS or SSH credentials. Overrides the controller-wide Secret, see [host-setup.md](host-setup.md#credentials) |
 
 ## LibvirtMachine
 

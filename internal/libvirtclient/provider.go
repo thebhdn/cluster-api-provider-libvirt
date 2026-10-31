@@ -29,7 +29,7 @@ func NewProvider() *Provider {
 }
 
 func (p *Provider) EnsureInfra(cfg InfraConfig) error {
-	conn, err := connect(cfg.getURI())
+	conn, err := connect(cfg)
 	if err != nil {
 		return fmt.Errorf("connect to libvirt host: %w", err)
 	}
@@ -51,7 +51,7 @@ func (p *Provider) EnsureInfra(cfg InfraConfig) error {
 }
 
 func (p *Provider) CreateMachine(cfg MachineConfig) error {
-	conn, err := connect(cfg.getURI())
+	conn, err := connect(cfg.InfraConfig)
 	if err != nil {
 		return fmt.Errorf("connect to libvirt host: %w", err)
 	}
@@ -61,7 +61,7 @@ func (p *Provider) CreateMachine(cfg MachineConfig) error {
 }
 
 func (p *Provider) StartMachine(cfg MachineConfig) error {
-	conn, err := connect(cfg.getURI())
+	conn, err := connect(cfg.InfraConfig)
 	if err != nil {
 		return fmt.Errorf("connect to libvirt host: %w", err)
 	}
@@ -82,7 +82,7 @@ func (p *Provider) StartMachine(cfg MachineConfig) error {
 func (p *Provider) GetMachineState(cfg MachineConfig) (DomainState, error) {
 	var state DomainState
 
-	conn, err := connect(cfg.getURI())
+	conn, err := connect(cfg.InfraConfig)
 	if err != nil {
 		return state, fmt.Errorf("connect to libvirt host: %w", err)
 	}
@@ -97,7 +97,7 @@ func (p *Provider) GetMachineState(cfg MachineConfig) (DomainState, error) {
 }
 
 func (p *Provider) DeleteMachine(cfg MachineConfig) error {
-	conn, err := connect(cfg.getURI())
+	conn, err := connect(cfg.InfraConfig)
 	if err != nil {
 		return fmt.Errorf("connect to libvirt host: %w", err)
 	}
@@ -126,7 +126,7 @@ func (p *Provider) DeleteMachine(cfg MachineConfig) error {
 // leases matched by the domain's deterministic MAC. Empty string when the VM
 // has no lease yet.
 func (p *Provider) GetMachineAddress(cfg MachineConfig) (string, error) {
-	conn, err := connect(cfg.getURI())
+	conn, err := connect(cfg.InfraConfig)
 	if err != nil {
 		return "", fmt.Errorf("connect to libvirt host: %w", err)
 	}

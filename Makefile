@@ -173,7 +173,7 @@ RELEASE_OVERLAY_DIR = $(OUT_DIR)/kustomize
 release-manifests: manifests kustomize ## Build infrastructure-components.yaml, metadata.yaml and cluster-template.yaml into RELEASE_DIR for IMG.
 	rm -rf "$(RELEASE_OVERLAY_DIR)" "$(RELEASE_DIR)"
 	mkdir -p "$(RELEASE_OVERLAY_DIR)" "$(RELEASE_DIR)"
-	cd "$(RELEASE_OVERLAY_DIR)" && "$(KUSTOMIZE)" create --resources "$$(realpath --relative-to=. "$(CURDIR)/config/default")"
+	cd "$(RELEASE_OVERLAY_DIR)" && "$(KUSTOMIZE)" create --resources "$$(realpath --relative-to=. "$(CURDIR)/config/release")"
 	cd "$(RELEASE_OVERLAY_DIR)" && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build "$(RELEASE_OVERLAY_DIR)" > "$(RELEASE_DIR)/infrastructure-components.yaml"
 	cp metadata.yaml templates/cluster-template.yaml "$(RELEASE_DIR)/"

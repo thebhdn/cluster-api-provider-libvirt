@@ -33,6 +33,7 @@ type MockProvider struct {
 	GetMachineAddressErr error
 	MachineState         libvirtclient.DomainState
 	CreatedMachineConfig *libvirtclient.MachineConfig
+	EnsuredInfraConfig   *libvirtclient.InfraConfig
 }
 
 var _ provider = (*MockProvider)(nil)
@@ -44,11 +45,19 @@ func (m *MockProvider) SetEnsureInfraErr(err error) {
 	m.EnsureInfraErr = err
 }
 
-// EnsureInfra returns a pre-configured error, or nil.
+// EnsureInfra records the config it was called with and returns a pre-configured error.
 func (m *MockProvider) EnsureInfra(cfg libvirtclient.InfraConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.EnsuredInfraConfig = &cfg
+	return m.EnsureInfraErr
+}
+
+// GetEnsuredInfraConfig returns the config passed to the last EnsureInfra call.
+func (m *MockProvider) GetEnsuredInfraConfig() *libvirtclient.InfraConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.EnsureInfraErr
+	return m.EnsuredInfraConfig
 }
 
 // SetGetMachineStateErr configures the error returned by GetMachineState.

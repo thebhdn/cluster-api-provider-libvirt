@@ -52,7 +52,7 @@ The full steps, all template variables and the kube-vip notes are in
 
 | Document | Content |
 |---|---|
-| [Host setup](docs/host-setup.md) | Connection URI, network, storage pools and base image |
+| [Host setup](docs/host-setup.md) | Connection URI and credentials, network, storage pools and base image |
 | [Getting started](docs/getting-started.md) | Release files, `clusterctl`, cluster template, install from source |
 | [API](docs/api.md) | Fields, defaults, validation and `kubectl` output |
 | [How it works](docs/how-it-works.md) | Reconcile flow, names and identity, conditions |

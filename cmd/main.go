@@ -26,9 +26,11 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -45,6 +47,14 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+)
+
+const (
+	// defaultCredentialsSecretName is the controller-wide credentials Secret from the release manifests.
+	defaultCredentialsSecretName = "cluster-api-provider-libvirt-credentials"
+
+	// envPodNamespace is set from the downward API in the controller Deployment.
+	envPodNamespace = "POD_NAMESPACE"
 )
 
 func init() {
@@ -65,6 +75,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var credentialsSecretName, credentialsSecretNamespace string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -85,6 +96,10 @@ func main() {
 	opts := zap.Options{
 		Development: true,
 	}
+	flag.StringVar(&credentialsSecretName, "credentials-secret-name", defaultCredentialsSecretName,
+		"Secret with the libvirt credentials for LibvirtClusters without credentialsRef. Empty turns it off.")
+	flag.StringVar(&credentialsSecretNamespace, "credentials-secret-namespace", os.Getenv(envPodNamespace),
+		"Namespace of --credentials-secret-name. Defaults to the controller namespace.")
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -151,19 +166,22 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	provider := libvirtclient.NewProvider()
+	credentials := newCredentialsLoader(mgr.GetClient(), credentialsSecretName, credentialsSecretNamespace)
 
 	if err := (&controller.LibvirtClusterReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Provider: provider,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Provider:    provider,
+		Credentials: credentials,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "libvirtcluster")
 		os.Exit(1)
 	}
 	if err := (&controller.LibvirtMachineReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Provider: provider,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Provider:    provider,
+		Credentials: credentials,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "libvirtmachine")
 		os.Exit(1)
@@ -184,4 +202,18 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+// newCredentialsLoader turns the controller-wide Secret off when its name or namespace is empty.
+func newCredentialsLoader(c client.Client, name, namespace string) controller.CredentialsLoader {
+	loader := controller.CredentialsLoader{Client: c}
+	if name == "" || namespace == "" {
+		setupLog.Info("Controller-wide libvirt credentials are off", "secret-name", name, "secret-namespace", namespace)
+		return loader
+	}
+
+	loader.DefaultSecret = types.NamespacedName{Namespace: namespace, Name: name}
+	setupLog.Info("Using controller-wide libvirt credentials", "secret", loader.DefaultSecret.String())
+
+	return loader
 }

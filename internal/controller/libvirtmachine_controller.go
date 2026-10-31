@@ -52,7 +52,8 @@ type LibvirtMachineReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	Provider provider
+	Provider    provider
+	Credentials CredentialsLoader
 }
 
 type MachineScope struct {
@@ -157,12 +158,21 @@ func (r *LibvirtMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	creds, err := r.Credentials.Load(ctx, libvirtCluster)
+	if err != nil {
+		logger.Error(err, "Unable to load libvirt credentials")
+		return ctrl.Result{}, err
+	}
+
+	machineConfig := newMachineConfig(libvirtMachine, libvirtCluster)
+	machineConfig.Credentials = creds
+
 	scope := &MachineScope{
 		Cluster:          ownerCluster,
 		Machine:          ownerMachine,
 		LibvirtCluster:   libvirtCluster,
 		LibvirtMachine:   libvirtMachine,
-		MachineConfig:    newMachineConfig(libvirtMachine, libvirtCluster),
+		MachineConfig:    machineConfig,
 		Ctx:              ctx,
 		ReconcilerClient: r.Client,
 	}
