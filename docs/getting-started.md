@@ -43,7 +43,7 @@ For `qemu+tls://` or `qemu+libssh://`, set the credential env vars before `clust
 export LIBVIRT_URI=qemu+tcp://libvirt.lab/system
 export LIBVIRT_BASE_POOL=capi-base-images
 export LIBVIRT_DOMAIN_POOL=capi-vm-disks
-export LIBVIRT_IMAGE=ubuntu-noble-base.qcow2
+export LIBVIRT_IMAGE=ubuntu-2404-kube-v1.34.1.qcow2
 export CONTROL_PLANE_ENDPOINT_IP=192.168.122.10
 export KUBERNETES_VERSION=v1.34.1
 

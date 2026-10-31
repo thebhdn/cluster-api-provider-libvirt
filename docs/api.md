@@ -47,7 +47,7 @@ spec:
   vcpu: 2
   memoryMiB: 2048
   diskGiB: 20
-  image: ubuntu-noble-base.qcow2
+  image: ubuntu-2404-kube-v1.34.1.qcow2
 ```
 
 | Field | Required | Default | Minimum | Description |
