@@ -24,7 +24,7 @@ copied from `debian:trixie-slim`. All stages use Debian 13, so the glibc version
 | `internal/libvirtclient/` | All libvirt calls: infra checks, domains, volumes, cloud-init ISO, DHCP reservations |
 | `internal/libvirtclient/builders/` | Typed builders for domain and volume XML |
 | `templates/` | Cluster template and example manifests |
-| `hack/` | Boilerplate and the local clusterctl config template |
+| `hack/` | Boilerplate, the local clusterctl config template and `prepare-host.sh` |
 | `docs/` | This documentation |
 
 ## Common tasks

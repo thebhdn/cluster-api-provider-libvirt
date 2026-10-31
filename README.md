@@ -23,7 +23,13 @@ when the `Machine` is deleted.
 
 ## Quickstart
 
-1. Prepare the libvirt host: [docs/host-setup.md](docs/host-setup.md).
+1. Build a base image with [image-builder](https://github.com/kubernetes-sigs/image-builder) and
+   prepare the libvirt host (network, pools, image upload), see [docs/host-setup.md](docs/host-setup.md):
+
+   ```sh
+   hack/prepare-host.sh --image ubuntu-2404-kube-v1.34.1.qcow2
+   ```
+
 2. Build the release files and install the provider into a management cluster:
 
    ```sh
@@ -37,7 +43,7 @@ when the `Machine` is deleted.
    export LIBVIRT_URI=qemu+tcp://libvirt.lab/system
    export LIBVIRT_BASE_POOL=capi-base-images
    export LIBVIRT_DOMAIN_POOL=capi-vm-disks
-   export LIBVIRT_IMAGE=ubuntu-noble-base.qcow2
+   export LIBVIRT_IMAGE=ubuntu-2404-kube-v1.34.1.qcow2
    export CONTROL_PLANE_ENDPOINT_IP=192.168.122.10
    export KUBERNETES_VERSION=v1.34.1
 

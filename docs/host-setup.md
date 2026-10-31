@@ -4,6 +4,26 @@ The provider is a consumer of an existing libvirt host. You prepare the network,
 and the base images. The provider checks that they exist and creates VMs on top of them. It does
 not create, change or delete networks or pools.
 
+## Quick setup
+
+[`hack/prepare-host.sh`](../hack/prepare-host.sh) does the steps below over any libvirt URI. It
+checks the network, creates and starts the pools, and uploads a base image. Running it again
+changes nothing that is already in place.
+
+```sh
+export LIBVIRT_URI=qemu+tls://libvirt.lab/system   # default: qemu:///system
+hack/prepare-host.sh --image output/ubuntu-2404-kube-v1.34.1/ubuntu-2404-kube-v1.34.1 \
+  --image-name ubuntu-2404-kube-v1.34.1.qcow2
+```
+
+It reads the same variables as the cluster template (`LIBVIRT_URI`, `LIBVIRT_NETWORK`,
+`LIBVIRT_BASE_POOL`, `LIBVIRT_DOMAIN_POOL`, `LIBVIRT_IMAGE`), so one set of `export`s works for both.
+New pools go to `/var/lib/libvirt/capi/<pool>` on the host (`--pool-root`). `--force` replaces an
+existing image. See `hack/prepare-host.sh --help`.
+
+The client running the script needs only `virsh`. The image is streamed over the libvirt
+connection, so no SSH or file copy to the host is needed.
+
 ## Connection
 
 The host must be reachable from the management cluster, for example over `qemu+tls://`,
@@ -100,8 +120,8 @@ Two active pools:
 They can be the same pool.
 
 ```sh
-virsh pool-define-as capi-base-images dir --target /var/lib/libvirt/capi/base
-virsh pool-define-as capi-vm-disks dir --target /var/lib/libvirt/capi/disks
+virsh pool-define-as capi-base-images dir --target /var/lib/libvirt/capi/capi-base-images
+virsh pool-define-as capi-vm-disks dir --target /var/lib/libvirt/capi/capi-vm-disks
 for pool in capi-base-images capi-vm-disks; do
   virsh pool-build $pool && virsh pool-start $pool && virsh pool-autostart $pool
 done
@@ -109,13 +129,31 @@ done
 
 ## Base image
 
-A cloud image with cloud-init, containerd, kubeadm and kubelet for the Kubernetes version you want.
-Upload it to the base pool as a qcow2 volume:
+A qcow2 image with cloud-init, containerd, kubeadm and kubelet for the Kubernetes version you want.
+Like the Proxmox and OpenStack providers, the provider does not build images. Build one with
+[image-builder](https://github.com/kubernetes-sigs/image-builder), using its QEMU target:
 
 ```sh
-cp ubuntu-noble-base.qcow2 /var/lib/libvirt/capi/base/
+git clone https://github.com/kubernetes-sigs/image-builder.git
+cd image-builder/images/capi
+make deps-qemu
+make build-qemu-ubuntu-2404
+```
+
+The image is written to `output/ubuntu-2404-kube-<version>/`. To pick the Kubernetes version, pass
+a Packer variables file with `PACKER_VAR_FILES`, see the image-builder documentation.
+
+Upload it with the script above, or by hand on the host:
+
+```sh
+cp ubuntu-2404-kube-v1.34.1.qcow2 /var/lib/libvirt/capi/capi-base-images/
 virsh pool-refresh capi-base-images
 ```
 
-`LibvirtMachine.spec.image` is the volume name, here `ubuntu-noble-base.qcow2`. Images cannot be
-loaded from a URL yet.
+`LibvirtMachine.spec.image` is the volume name, here `ubuntu-2404-kube-v1.34.1.qcow2`. Every VM disk
+is a qcow2 overlay on top of it, so do not change or delete the image while machines use it. For a
+new Kubernetes version, upload a new image under a new name and point a new `LibvirtMachineTemplate`
+to it.
+
+Check the NIC name in the guest (`ip link`). The default template runs kube-vip on `ens3`
+(`KUBE_VIP_INTERFACE`). Images cannot be loaded from a URL yet.
