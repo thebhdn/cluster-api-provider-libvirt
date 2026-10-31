@@ -457,7 +457,7 @@ func newMachineConfig(libvirtMachine *infrav1.LibvirtMachine, libvirtCluster *in
 		},
 		DomainName: domainName(libvirtMachine),
 		Hostname:   libvirtMachine.Name,
-		DomainUUID: string(libvirtMachine.UID),
+		DomainUUID: domainUUID(libvirtMachine),
 		BaseImage:  libvirtMachine.Spec.Image,
 		MemoryMiB:  uint(libvirtMachine.Spec.MemoryMiB),
 		VCPU:       uint(libvirtMachine.Spec.VCPU),
@@ -502,8 +502,21 @@ func domainName(libvirtMachine *infrav1.LibvirtMachine) string {
 	return prefix + domainNameSeparator + hash
 }
 
-// setProviderID derives the provider ID from the LibvirtMachine UID, which is also the domain UUID.
+// setProviderID sets the provider ID once, because clusterctl move gives the LibvirtMachine a new UID.
 func setProviderID(libvirtMachine *infrav1.LibvirtMachine) {
-	providerID := providerIDPrefix + string(libvirtMachine.UID)
+	if libvirtMachine.Spec.ProviderID != nil {
+		return
+	}
+
+	providerID := providerIDPrefix + domainUUID(libvirtMachine)
 	libvirtMachine.Spec.ProviderID = &providerID
+}
+
+// domainUUID is the UUID in the provider ID once set, else the LibvirtMachine UID.
+func domainUUID(libvirtMachine *infrav1.LibvirtMachine) string {
+	if libvirtMachine.Spec.ProviderID == nil {
+		return string(libvirtMachine.UID)
+	}
+
+	return strings.TrimPrefix(*libvirtMachine.Spec.ProviderID, providerIDPrefix)
 }

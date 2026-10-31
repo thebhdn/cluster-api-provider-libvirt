@@ -34,6 +34,7 @@ import (
 	infrastructurev1alpha1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
 	"github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -335,6 +336,55 @@ var _ = Describe("LibvirtMachine Controller", func() {
 		Expect(condition).NotTo(BeNil())
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition.Reason).To(Equal(infrastructurev1alpha1.DomainNotFoundReason))
+	})
+
+	It("keeps the provider ID and domain UUID after clusterctl move", func() {
+		// clusterctl move creates the object again, so its UID no longer matches the provider ID.
+		const movedFromUID = "0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"
+		movedProviderID := providerIDPrefix + movedFromUID
+
+		libvMachine := &infrastructurev1alpha1.LibvirtMachine{}
+		Expect(k8sClient.Get(ctx, namespacedName, libvMachine)).To(Succeed())
+		libvMachine.Spec.ProviderID = &movedProviderID
+		controllerutil.AddFinalizer(libvMachine, infrastructurev1alpha1.LibvirtMachineFinalizer)
+		Expect(k8sClient.Update(ctx, libvMachine)).To(Succeed())
+		Expect(string(libvMachine.UID)).NotTo(Equal(movedFromUID))
+
+		libvCluster := &infrastructurev1alpha1.LibvirtCluster{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testClusterName + "-infra", Namespace: testNamespace}, libvCluster)).To(Succeed())
+
+		helper, err := patch.NewHelper(libvMachine, k8sClient)
+		Expect(err).NotTo(HaveOccurred())
+
+		infraReady := true
+		scope := &MachineScope{
+			ReconcilerClient: k8sClient,
+			Cluster: &clusterv1.Cluster{
+				Status: clusterv1.ClusterStatus{
+					Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: &infraReady},
+				},
+			},
+			Machine:        &clusterv1.Machine{},
+			LibvirtCluster: libvCluster,
+			LibvirtMachine: libvMachine,
+			Ctx:            ctx,
+			MachineConfig:  newMachineConfig(libvMachine, libvCluster),
+		}
+		Expect(scope.MachineConfig.DomainUUID).To(Equal(movedFromUID))
+
+		mockProvider := &MockProvider{}
+		mockProvider.SetMachineState(libvirtclient.DomainStateRunning)
+		mockProvider.SetMachineAddress("192.168.122.51")
+		reconciler := &LibvirtMachineReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Provider: mockProvider}
+
+		_, err = reconciler.reconcileNormal(scope)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(helper.Patch(ctx, libvMachine)).To(Succeed())
+
+		updated := &infrastructurev1alpha1.LibvirtMachine{}
+		Expect(k8sClient.Get(ctx, namespacedName, updated)).To(Succeed())
+		Expect(updated.Spec.ProviderID).To(HaveValue(Equal(movedProviderID)))
+		Expect(updated.Status.Initialization.Provisioned).To(BeTrue())
 	})
 
 	It("should handle deletion correctly", func() {

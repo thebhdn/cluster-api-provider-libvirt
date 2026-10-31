@@ -75,6 +75,21 @@ kubeletExtraArgs:
     value: "libvirt://{{ ds.meta_data.instance_id }}"
 ```
 
+## Move to another management cluster
+
+`clusterctl move` (for example a pivot into the workload cluster) works. Machines keep their
+provider ID and their domain on the host. Two things are not moved for you:
+
+- The controller-wide credentials Secret. Run `clusterctl init` on the target cluster with the
+  same `LIBVIRT_TLS_*` or `LIBVIRT_SSH_*` env vars, see [host-setup.md](host-setup.md#credentials).
+- A Secret used by `spec.credentialsRef`. `clusterctl move` only moves it with the move label:
+
+  ```sh
+  kubectl label secret libvirt-credentials clusterctl.cluster.x-k8s.io/move=
+  ```
+
+The target cluster must be able to reach the libvirt host.
+
 ## Install from source
 
 To install into a cluster that already runs CAPI, without `clusterctl`:
