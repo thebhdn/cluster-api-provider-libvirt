@@ -47,8 +47,8 @@ On delete, it removes the domain, the root disk, the cloud-init ISO and the DHCP
 |---|---|
 | Domain name | `<namespace>-<name>-<hash>`, for example `default-libvirt-xd-0-3fa91c`. Unique on the host and a valid DNS label |
 | Guest hostname | The `LibvirtMachine` name |
-| Domain UUID | The `LibvirtMachine` UID |
-| Provider ID | `libvirt://<LibvirtMachine UID>` |
+| Domain UUID | The `LibvirtMachine` UID when the domain is created |
+| Provider ID | `libvirt://<domain UUID>`, set once and never changed, so it stays the same after `clusterctl move` |
 | cloud-init `instance-id` | The domain UUID |
 | Volumes | `<domain name>.qcow2` and `cloudinit-<domain name>.iso` in `domainPool` |
 | MAC address | Derived from the domain name, with the `52:54:00` prefix |
