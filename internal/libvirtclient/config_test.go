@@ -126,13 +126,6 @@ var _ = Describe("InfraConfig accessors", func() {
 			Expect(cfg.domainPoolName()).To(Equal("domain-pool"))
 		})
 	})
-
-	When("URI is set", func() {
-		It("returns the configured URI", func() {
-			cfg := InfraConfig{URI: "qemu+ssh://user@host/system"}
-			Expect(cfg.getURI()).To(Equal("qemu+ssh://user@host/system"))
-		})
-	})
 })
 
 var _ = Describe("MachineConfig embedding", func() {
@@ -180,13 +173,13 @@ var _ = Describe("MachineConfig embedding", func() {
 
 var _ = Describe("connect error wrapping", func() {
 	It("wraps connection errors with a descriptive prefix", func() {
-		_, err := connect("invalid-uri://invalid-host")
+		_, err := connect(InfraConfig{URI: "invalid-uri://invalid-host"})
 		Expect(err).NotTo(BeNil())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt:"))
 	})
 
 	It("wraps connection errors even with a valid URI scheme", func() {
-		_, err := connect("qemu+tcp://localhost/system")
+		_, err := connect(InfraConfig{URI: "qemu+tcp://localhost/system"})
 		if err == nil {
 			Skip("libvirt not available; skipping connection error test")
 		}

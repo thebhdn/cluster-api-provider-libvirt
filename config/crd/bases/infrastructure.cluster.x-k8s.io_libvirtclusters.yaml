@@ -80,6 +80,18 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+              credentialsRef:
+                description: |-
+                  CredentialsRef points to a Secret in the same namespace with the client credentials for a
+                  qemu+tls, qemu+libssh or qemu+libssh2 URI. It overrides the controller-wide credentials Secret.
+                properties:
+                  name:
+                    description: Name of the Secret
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
               domainPool:
                 description: DomainPool is the storage pool for VM disks and cloud-init
                   ISOs

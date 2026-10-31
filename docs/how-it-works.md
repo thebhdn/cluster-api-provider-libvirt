@@ -15,9 +15,10 @@ Management cluster                             libvirt host
 1. Waits until CAPI sets the owner `Cluster`, then adds a finalizer.
 2. Checks that a control plane endpoint is set, either on `LibvirtCluster.spec.controlPlaneEndpoint`
    or on `Cluster.spec.controlPlaneEndpoint`. If not, it sets `ControlPlaneEndpointReady=False` and waits.
-3. Connects to `spec.uri` and checks that `spec.network`, `spec.basePool` and `spec.domainPool`
+3. Reads the credentials from `spec.credentialsRef`, or else from the controller-wide Secret.
+4. Connects to `spec.uri` and checks that `spec.network`, `spec.basePool` and `spec.domainPool`
    exist and are active. It does not create or start them.
-4. Sets `status.initialization.provisioned=true` when everything is ready.
+5. Sets `status.initialization.provisioned=true` when everything is ready.
 
 On delete, it only removes the finalizer. Nothing on the host is changed.
 
@@ -57,7 +58,7 @@ On delete, it removes the domain, the root disk, the cloud-init ISO and the DHCP
 | Resource | Condition | Meaning |
 |---|---|---|
 | `LibvirtCluster` | `ControlPlaneEndpointReady` | A control plane endpoint is set |
-| `LibvirtCluster` | `InfrastructureReady` | Network and pools exist and are active (reasons: `InfrastructureMissing`, `InfrastructureInactive`, `InfrastructureProvisioningFailed`) |
+| `LibvirtCluster` | `InfrastructureReady` | Network and pools exist and are active (reasons: `CredentialsUnavailable`, `InfrastructureMissing`, `InfrastructureInactive`, `InfrastructureProvisioningFailed`) |
 | `LibvirtMachine` | `InfrastructureReady` | The cluster infrastructure is provisioned |
 | `LibvirtMachine` | `DomainProvisioningReady` | The domain is being created or creation failed |
 | `LibvirtMachine` | `MachineCreated` | The domain was created |

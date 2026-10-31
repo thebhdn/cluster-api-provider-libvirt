@@ -18,6 +18,7 @@ package libvirtclient
 
 import (
 	"fmt"
+	"os"
 
 	build "github.com/thebhdn/cluster-api-provider-libvirt/internal/libvirtclient/builders"
 	libvirt "libvirt.org/go/libvirt"
@@ -28,6 +29,9 @@ type InfraConfig struct {
 	BasePool   string
 	DomainPool string
 	Network    string
+
+	// Credentials are optional and only used for TLS and SSH URIs.
+	Credentials *Credentials
 }
 
 type MachineConfig struct {
@@ -43,7 +47,27 @@ type MachineConfig struct {
 	UserData   []byte
 }
 
-func connect(uri string) (*libvirt.Connect, error) {
+// connect opens a libvirt connection; credential files only live until the connection is open.
+func connect(cfg InfraConfig) (*libvirt.Connect, error) {
+	if cfg.Credentials == nil {
+		return openConnection(cfg.URI)
+	}
+
+	dir, err := os.MkdirTemp("", credentialsDirPattern)
+	if err != nil {
+		return nil, fmt.Errorf("create credentials dir: %w", err)
+	}
+	defer os.RemoveAll(dir) //nolint:errcheck
+
+	uri, err := cfg.Credentials.connectionURI(cfg.URI, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return openConnection(uri)
+}
+
+func openConnection(uri string) (*libvirt.Connect, error) {
 	conn, err := libvirt.NewConnect(uri)
 	if err != nil {
 		return nil, fmt.Errorf("connect to libvirt: %w", err)
@@ -111,8 +135,4 @@ func (c *InfraConfig) basePoolName() string {
 
 func (c *InfraConfig) domainPoolName() string {
 	return c.DomainPool
-}
-
-func (c *InfraConfig) getURI() string {
-	return c.URI
 }

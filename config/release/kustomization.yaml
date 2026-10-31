@@ -1,0 +1,7 @@
+# Release manifests: config/default plus the controller-wide credentials Secret.
+# The Secret uses clusterctl variables, so it is not part of `make deploy`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../default
+- credentials_secret.yaml

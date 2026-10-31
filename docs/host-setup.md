@@ -10,6 +10,75 @@ The host must be reachable from the management cluster, for example over `qemu+t
 `qemu+tcp://` or `qemu+libssh://`. The controller image is distroless and has no `ssh` binary, so
 use `qemu+libssh://` or `qemu+libssh2://` instead of `qemu+ssh://`.
 
+`qemu+tcp://` without auth needs no credentials, but anyone who can reach the port controls the
+host. Use it only in a closed lab.
+
+### Credentials
+
+For TLS and SSH, the controller needs client credentials. Like the Proxmox provider, they come
+from one controller-wide Secret, filled at `clusterctl init`. A `LibvirtCluster` can override it
+with its own Secret.
+
+**Controller-wide** (`cluster-api-provider-libvirt-credentials` in the controller namespace): set
+base64 env vars before `clusterctl init`. Unset vars stay empty, and an empty Secret means a plain
+connection, so `qemu+tcp://` needs none of them.
+
+| Env var | Secret key | For |
+|---|---|---|
+| `LIBVIRT_TLS_CA_B64` | `ca.crt` | TLS: CA that signed the libvirt server certificate |
+| `LIBVIRT_TLS_CERT_B64` | `tls.crt` | TLS: client certificate |
+| `LIBVIRT_TLS_KEY_B64` | `tls.key` | TLS: client key |
+| `LIBVIRT_SSH_PRIVATE_KEY_B64` | `ssh-privatekey` | SSH: private key |
+| `LIBVIRT_SSH_KNOWN_HOSTS_B64` | `known_hosts` | SSH: `known_hosts` with the libvirt host key |
+
+TLS (`qemu+tls://`):
+
+```sh
+export LIBVIRT_TLS_CA_B64=$(base64 -w0 cacert.pem)
+export LIBVIRT_TLS_CERT_B64=$(base64 -w0 clientcert.pem)
+export LIBVIRT_TLS_KEY_B64=$(base64 -w0 clientkey.pem)
+clusterctl init --config out/repository/clusterctl.yaml --infrastructure libvirt:v0.1.0
+```
+
+SSH (`qemu+libssh://` or `qemu+libssh2://`). Put the user in the URI, for example
+`qemu+libssh://capi@libvirt.lab/system`:
+
+```sh
+export LIBVIRT_SSH_PRIVATE_KEY_B64=$(base64 -w0 id_ed25519)
+export LIBVIRT_SSH_KNOWN_HOSTS_B64=$(ssh-keyscan libvirt.lab 2>/dev/null | base64 -w0)
+clusterctl init --config out/repository/clusterctl.yaml --infrastructure libvirt:v0.1.0
+```
+
+To change the credentials later, edit the Secret. The controller reads it again for every
+connection, so no restart is needed.
+
+**Per cluster** (optional): create a Secret with the same keys in the namespace of the
+`LibvirtCluster` and set `spec.credentialsRef`. It replaces the controller-wide Secret for that
+cluster.
+
+```sh
+kubectl create secret generic libvirt-credentials \
+  --from-file=ca.crt=cacert.pem \
+  --from-file=tls.crt=clientcert.pem \
+  --from-file=tls.key=clientkey.pem
+```
+
+```yaml
+spec:
+  uri: qemu+tls://libvirt.lab/system
+  credentialsRef:
+    name: libvirt-credentials
+```
+
+The TLS keys are the same as in a `kubernetes.io/tls` Secret plus `ca.crt`, so a cert-manager
+`Certificate` Secret works as is.
+
+The controller writes the files to a private temp dir only while it opens a connection, and adds
+`pkipath=` (TLS) or `keyfile=`, `known_hosts=` and `sshauth=privkey` (SSH) to the URI. If a Secret
+has only some of the TLS or SSH keys, or a `credentialsRef` Secret is missing,
+`InfrastructureReady` is `False` with reason `CredentialsUnavailable`. `make deploy` does not
+create the controller-wide Secret; create it by hand with the same name if you need it.
+
 ## Network
 
 A libvirt network with an IPv4 subnet and DHCP, for example the `default` NAT network.

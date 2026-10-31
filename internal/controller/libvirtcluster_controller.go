@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,7 +55,8 @@ type LibvirtClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	Provider provider
+	Provider    provider
+	Credentials CredentialsLoader
 }
 
 // ClusterScope is a struct that contains the necessary data needed for a LibvirtCluster controller
@@ -129,8 +131,16 @@ func (r *LibvirtClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *LibvirtClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &infrav1.LibvirtCluster{}, credentialsRefNameField, credentialsRefName); err != nil {
+		return fmt.Errorf("index LibvirtCluster by %s: %w", credentialsRefNameField, err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.LibvirtCluster{}).
+		Watches(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.Credentials.secretToLibvirtClusters),
+		).
 		Watches(
 			&clusterv1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(ctx, infrav1.GroupVersion.WithKind("LibvirtCluster"), mgr.GetClient(), &infrav1.LibvirtCluster{})),
@@ -181,6 +191,20 @@ func (r *LibvirtClusterReconciler) reconcileNormal(scope *ClusterScope) (ctrl.Re
 		Reason:  infrav1.InfrastructureProvisioningInProgressReason,
 		Message: "Infrastructure provisioning in progress",
 	})
+
+	creds, err := r.Credentials.Load(scope.Ctx, scope.LibvirtCluster)
+	if err != nil {
+		logger.Error(err, "could not load libvirt credentials, requeuing....")
+
+		conditions.Set(scope.LibvirtCluster, v1.Condition{
+			Type:    infrav1.InfrastructureReadyCondition,
+			Status:  v1.ConditionFalse,
+			Reason:  infrav1.CredentialsUnavailableReason,
+			Message: err.Error(),
+		})
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
+	}
+	scope.InfraConfig.Credentials = creds
 
 	if err := r.Provider.EnsureInfra(scope.InfraConfig); err != nil {
 		logger.Error(err, "could not verify libvirt infrastructure, requeuing....")

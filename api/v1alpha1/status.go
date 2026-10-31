@@ -34,6 +34,9 @@ const (
 	// InfrastructureInactiveReason documents that a libvirt resource
 	// referenced by the cluster spec exists but is not active.
 	InfrastructureInactiveReason = "InfrastructureInactive"
+
+	// CredentialsUnavailableReason documents that the Secret from credentialsRef is missing or invalid.
+	CredentialsUnavailableReason = "CredentialsUnavailable"
 )
 
 const (
