@@ -29,7 +29,9 @@ COPY . .
 # was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -tags="${GO_TAGS}" -trimpath -ldflags="-s -w" -a -o manager cmd/main.go
+# The build cache mount keeps rebuilds fast (Tilt); it does not change the binary.
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -tags="${GO_TAGS}" -trimpath -ldflags="-s -w" -o manager cmd/main.go
 
 # Collect libvirt.so.0 and its shared library dependencies into /out
 FROM ${LIBS_IMAGE} AS libs

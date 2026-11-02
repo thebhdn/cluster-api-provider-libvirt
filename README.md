@@ -1,7 +1,7 @@
 # cluster-api-provider-libvirt
 
 A [Cluster API](https://cluster-api.sigs.k8s.io/) (CAPI) infrastructure provider that runs Kubernetes
-machines as KVM virtual machines on a [libvirt](https://libvirt.org/) host.
+machines as KVM virtual machines on a [libvirt](https://libvirt.org/) host. Short name: **CAPLV**.
 
 > **Status:** proof of concept for development and testing, not for production. All machines of a
 > cluster run on one libvirt host, and failure domains are not supported. The API is `v1alpha1`
