@@ -31,3 +31,7 @@ go.work
 
 # Release files and local clusterctl repository
 out/
+
+# Local Tilt settings
+tilt-settings.yaml
+tilt_modules/
