@@ -27,3 +27,13 @@ func TestLibvirtClient(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "LibvirtClient Suite")
 }
+
+// Shared test values.
+const (
+	testNetwork        = "default"
+	testPool           = "default"
+	testDomainName     = "test-machine"
+	testMachineIP      = "192.168.122.55"
+	testMAC            = "52:54:00:aa:bb:cc"
+	testUnreachableURI = "qemu+tcp://invalid-host:9999/system"
+)

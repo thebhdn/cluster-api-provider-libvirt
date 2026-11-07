@@ -61,8 +61,8 @@ func IsIPv6CIDR(cidr string) bool {
 }
 
 func StripCIDR(ip string) string {
-	if idx := strings.Index(ip, "/"); idx >= 0 {
-		return ip[:idx]
+	if before, _, ok := strings.Cut(ip, "/"); ok {
+		return before
 	}
 	return ip
 }

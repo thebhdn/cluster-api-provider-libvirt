@@ -182,7 +182,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 				WithNetwork("default", "")
 
 			xml, err := domain.Marshal()
-			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			gomega.Expect(xml).To(gomega.ContainSubstring("<domain"))
 			gomega.Expect(xml).To(gomega.ContainSubstring("marshal-test"))
 		})
@@ -221,7 +221,7 @@ var _ = ginkgo.Describe("DomainBuilder", func() {
 			WithSerialConsole()
 
 		xml, err := domain.Marshal()
-		gomega.Expect(err).To(gomega.BeNil())
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
 		gomega.Expect(xml).To(gomega.ContainSubstring("complete-test"))
 		gomega.Expect(xml).To(gomega.ContainSubstring("/path/disk.qcow2"))
 		gomega.Expect(xml).To(gomega.ContainSubstring("/path/cloud-init.iso"))

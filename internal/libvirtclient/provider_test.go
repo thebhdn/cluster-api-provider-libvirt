@@ -41,14 +41,14 @@ var _ = Describe("Provider error wrapping", func() {
 		It("wraps the connection error", func() {
 			provider := NewProvider()
 			cfg := InfraConfig{
-				URI:        "qemu+tcp://invalid-host:9999/system",
-				Network:    "default",
-				BasePool:   "default",
-				DomainPool: "default",
+				URI:        testUnreachableURI,
+				Network:    testNetwork,
+				BasePool:   testPool,
+				DomainPool: testPool,
 			}
 
 			err := provider.EnsureInfra(cfg)
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("connect to libvirt host:"))
 		})
 	})
@@ -58,16 +58,16 @@ var _ = Describe("Provider error wrapping", func() {
 			provider := NewProvider()
 			cfg := MachineConfig{
 				InfraConfig: InfraConfig{
-					URI:        "qemu+tcp://invalid-host:9999/system",
-					Network:    "default",
-					BasePool:   "default",
-					DomainPool: "default",
+					URI:        testUnreachableURI,
+					Network:    testNetwork,
+					BasePool:   testPool,
+					DomainPool: testPool,
 				},
-				DomainName: "test-machine",
+				DomainName: testDomainName,
 			}
 
 			err := provider.CreateMachine(cfg)
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("connect to libvirt host:"))
 		})
 	})
@@ -77,13 +77,13 @@ var _ = Describe("Provider error wrapping", func() {
 			provider := NewProvider()
 			cfg := MachineConfig{
 				InfraConfig: InfraConfig{
-					URI: "qemu+tcp://invalid-host:9999/system",
+					URI: testUnreachableURI,
 				},
-				DomainName: "test-machine",
+				DomainName: testDomainName,
 			}
 
 			err := provider.StartMachine(cfg)
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("connect to libvirt host:"))
 		})
 	})
@@ -93,13 +93,13 @@ var _ = Describe("Provider error wrapping", func() {
 			provider := NewProvider()
 			cfg := MachineConfig{
 				InfraConfig: InfraConfig{
-					URI: "qemu+tcp://invalid-host:9999/system",
+					URI: testUnreachableURI,
 				},
-				DomainName: "test-machine",
+				DomainName: testDomainName,
 			}
 
 			state, err := provider.GetMachineState(cfg)
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("connect to libvirt host:"))
 			Expect(state).To(Equal(DomainState("")))
 		})
@@ -110,14 +110,14 @@ var _ = Describe("Provider error wrapping", func() {
 			provider := NewProvider()
 			cfg := MachineConfig{
 				InfraConfig: InfraConfig{
-					URI:        "qemu+tcp://invalid-host:9999/system",
-					DomainPool: "default",
+					URI:        testUnreachableURI,
+					DomainPool: testPool,
 				},
-				DomainName: "test-machine",
+				DomainName: testDomainName,
 			}
 
 			err := provider.DeleteMachine(cfg)
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("connect to libvirt host:"))
 		})
 	})
@@ -125,26 +125,26 @@ var _ = Describe("Provider error wrapping", func() {
 
 var _ = Describe("Provider methods with empty config", func() {
 	It("EnsureInfra with empty config wraps connection error", func() {
-		err := NewProvider().EnsureInfra(InfraConfig{URI: "qemu+tcp://nonexistent:1234/system"})
-		Expect(err).NotTo(BeNil())
+		err := NewProvider().EnsureInfra(InfraConfig{URI: testUnreachableURI})
+		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt host"))
 	})
 
 	It("CreateMachine with empty config wraps connection error", func() {
-		err := NewProvider().CreateMachine(MachineConfig{InfraConfig: InfraConfig{URI: "qemu+tcp://nonexistent:1234/system"}})
-		Expect(err).NotTo(BeNil())
+		err := NewProvider().CreateMachine(MachineConfig{InfraConfig: InfraConfig{URI: testUnreachableURI}})
+		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt host"))
 	})
 
 	It("StartMachine with empty config wraps connection error", func() {
-		err := NewProvider().StartMachine(MachineConfig{InfraConfig: InfraConfig{URI: "qemu+tcp://nonexistent:1234/system"}})
-		Expect(err).NotTo(BeNil())
+		err := NewProvider().StartMachine(MachineConfig{InfraConfig: InfraConfig{URI: testUnreachableURI}})
+		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt host"))
 	})
 
 	It("DeleteMachine with empty config wraps connection error", func() {
-		err := NewProvider().DeleteMachine(MachineConfig{InfraConfig: InfraConfig{URI: "qemu+tcp://nonexistent:1234/system"}})
-		Expect(err).NotTo(BeNil())
+		err := NewProvider().DeleteMachine(MachineConfig{InfraConfig: InfraConfig{URI: testUnreachableURI}})
+		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt host"))
 	})
 })

@@ -63,7 +63,7 @@ func createDomain(conn *libvirt.Connect, cfg MachineConfig) error {
 	}
 	// errcheck: matches the repo-wide unchecked Free/Close pattern; the
 	// handle must outlive the reservation call.
-	defer network.Free() //nolint:errcheck
+	defer network.Free()
 
 	if _, err := reserveMachineIP(network, cfg.Network, cfg.domainName(), mac); err != nil {
 		return err

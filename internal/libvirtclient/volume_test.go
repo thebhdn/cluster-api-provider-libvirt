@@ -62,7 +62,7 @@ var _ = Describe("volume builder marshaling", func() {
 				WithCapacity(20, "G").
 				WithBackingStore("/var/lib/libvirt/images/base.qcow2", "qcow2").
 				Marshal()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(volumeXML).NotTo(BeEmpty())
 		})
 	})
@@ -73,7 +73,7 @@ var _ = Describe("volume builder marshaling", func() {
 				WithCapacity(1024, "bytes").
 				WithRawType().
 				Marshal()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(volumeXML).NotTo(BeEmpty())
 		})
 	})
@@ -84,7 +84,7 @@ var _ = Describe("volume builder marshaling", func() {
 				WithCapacity(4096, "bytes").
 				WithRawType().
 				Marshal()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(volumeXML).NotTo(BeEmpty())
 		})
 	})

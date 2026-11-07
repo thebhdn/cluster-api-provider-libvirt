@@ -1,6 +1,9 @@
 version: "2"
 run:
   allow-parallel-runners: true
+  # Also lint the e2e suite.
+  build-tags:
+    - e2e
 linters:
   default: none
   enable:
@@ -24,6 +27,15 @@ linters:
     - unused
     - logcheck
   settings:
+    errcheck:
+      # Deferred Free and Close only drop a libvirt reference; the caller cannot act on an error.
+      exclude-functions:
+        - (*libvirt.org/go/libvirt.Connect).Close
+        - (*libvirt.org/go/libvirt.Domain).Free
+        - (*libvirt.org/go/libvirt.Network).Free
+        - (*libvirt.org/go/libvirt.StoragePool).Free
+        - (*libvirt.org/go/libvirt.StorageVol).Free
+        - (*libvirt.org/go/libvirt.Stream).Free
     staticcheck:
       checks:
         - all

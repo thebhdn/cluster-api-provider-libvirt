@@ -76,17 +76,17 @@ var _ = Describe("infra sentinel errors", func() {
 			var inactive *ErrInfraInactive
 
 			if expectMissing {
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 				Expect(errors.As(err, &missing)).To(BeTrue())
 				Expect(missing.Kind).To(Equal(kind))
 				Expect(missing.Name).To(Equal(name))
 			} else if expectInactive {
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 				Expect(errors.As(err, &inactive)).To(BeTrue())
 				Expect(inactive.Kind).To(Equal(kind))
 				Expect(inactive.Name).To(Equal(name))
 			} else {
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 			}
 		},
 		Entry("missing storage pool", InfraKindStoragePool, "base-pool", false, false, true, false),

@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"maps"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -63,12 +65,8 @@ var _ = Describe("credentialsFromSecret", func() {
 
 	It("reads both sets", func() {
 		data := map[string][]byte{}
-		for k, v := range tlsData {
-			data[k] = v
-		}
-		for k, v := range sshData {
-			data[k] = v
-		}
+		maps.Copy(data, tlsData)
+		maps.Copy(data, sshData)
 
 		creds, err := credentialsFromSecret(data)
 		Expect(err).NotTo(HaveOccurred())
