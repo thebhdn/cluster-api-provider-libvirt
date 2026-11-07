@@ -25,20 +25,20 @@ import (
 var _ = Describe("MachineConfig accessors", func() {
 	When("domainName is set", func() {
 		It("returns the configured name", func() {
-			cfg := MachineConfig{DomainName: "test-machine"}
-			Expect(cfg.domainName()).To(Equal("test-machine"))
+			cfg := MachineConfig{DomainName: testDomainName}
+			Expect(cfg.domainName()).To(Equal(testDomainName))
 		})
 	})
 
 	When("instanceID is computed", func() {
 		It("returns the domain UUID when set", func() {
-			cfg := MachineConfig{DomainName: "test-machine", DomainUUID: "0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"}
+			cfg := MachineConfig{DomainName: testDomainName, DomainUUID: "0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"}
 			Expect(cfg.instanceID()).To(Equal("0f7e9a52-1c3b-4d2e-9a8f-2b6c5d4e3f10"))
 		})
 
 		It("falls back to the domain name without a UUID", func() {
-			cfg := MachineConfig{DomainName: "test-machine"}
-			Expect(cfg.instanceID()).To(Equal("test-machine"))
+			cfg := MachineConfig{DomainName: testDomainName}
+			Expect(cfg.instanceID()).To(Equal(testDomainName))
 		})
 	})
 
@@ -56,14 +56,14 @@ var _ = Describe("MachineConfig accessors", func() {
 
 	When("domainDiskName is computed", func() {
 		It("appends .qcow2 extension", func() {
-			cfg := MachineConfig{DomainName: "test-machine"}
+			cfg := MachineConfig{DomainName: testDomainName}
 			Expect(cfg.domainDiskName()).To(Equal("test-machine.qcow2"))
 		})
 	})
 
 	When("isoDiskName is computed", func() {
 		It("prepends cloudinit- and appends .iso", func() {
-			cfg := MachineConfig{DomainName: "test-machine"}
+			cfg := MachineConfig{DomainName: testDomainName}
 			Expect(cfg.isoDiskName()).To(Equal("cloudinit-test-machine.iso"))
 		})
 	})
@@ -108,8 +108,8 @@ var _ = Describe("MachineConfig accessors", func() {
 var _ = Describe("InfraConfig accessors", func() {
 	When("network is set", func() {
 		It("returns the configured network name", func() {
-			cfg := InfraConfig{Network: "default"}
-			Expect(cfg.networkName()).To(Equal("default"))
+			cfg := InfraConfig{Network: testNetwork}
+			Expect(cfg.networkName()).To(Equal(testNetwork))
 		})
 	})
 
@@ -135,7 +135,7 @@ var _ = Describe("MachineConfig embedding", func() {
 				URI:        "qemu+tls://host/system",
 				BasePool:   "storage",
 				DomainPool: "domain-storage",
-				Network:    "default",
+				Network:    testNetwork,
 			},
 			DomainName: "test",
 		}
@@ -143,14 +143,14 @@ var _ = Describe("MachineConfig embedding", func() {
 		Expect(cfg.URI).To(Equal("qemu+tls://host/system"))
 		Expect(cfg.BasePool).To(Equal("storage"))
 		Expect(cfg.DomainPool).To(Equal("domain-storage"))
-		Expect(cfg.Network).To(Equal("default"))
+		Expect(cfg.Network).To(Equal(testNetwork))
 	})
 
 	It("resolves all accessors with a fully populated config", func() {
 		cfg := MachineConfig{
 			InfraConfig: InfraConfig{
 				URI:        "qemu+ssh://root@192.168.1.100/system",
-				BasePool:   "default",
+				BasePool:   testPool,
 				DomainPool: "images",
 				Network:    "virbr0",
 			},
@@ -174,7 +174,7 @@ var _ = Describe("MachineConfig embedding", func() {
 var _ = Describe("connect error wrapping", func() {
 	It("wraps connection errors with a descriptive prefix", func() {
 		_, err := connect(InfraConfig{URI: "invalid-uri://invalid-host"})
-		Expect(err).NotTo(BeNil())
+		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("connect to libvirt:"))
 	})
 

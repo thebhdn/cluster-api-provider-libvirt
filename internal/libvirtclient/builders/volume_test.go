@@ -89,7 +89,7 @@ var _ = ginkgo.Describe("VolumeBuilder", func() {
 			volume := NewVolume("test-disk").WithCapacity(20, "G")
 
 			xml, err := volume.Marshal()
-			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			gomega.Expect(xml).To(gomega.ContainSubstring("<volume>"))
 			gomega.Expect(xml).To(gomega.ContainSubstring("test-disk"))
 		})
@@ -100,7 +100,7 @@ var _ = ginkgo.Describe("VolumeBuilder", func() {
 				WithBackingStore("/var/lib/libvirt/images/base.qcow2", "qcow2")
 
 			xml, err := volume.Marshal()
-			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			gomega.Expect(xml).To(gomega.ContainSubstring("backingStore"))
 		})
 
@@ -108,7 +108,7 @@ var _ = ginkgo.Describe("VolumeBuilder", func() {
 			volume := NewVolume("xml-test").WithCapacity(10, "G")
 
 			xml, err := volume.Marshal()
-			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			gomega.Expect(xml).To(gomega.ContainSubstring(`<name>xml-test</name>`))
 		})
 	})
@@ -153,7 +153,7 @@ var _ = ginkgo.Describe("volume marshaling", func() {
 		volume := NewVolume("xml-test").WithCapacity(10, "G")
 
 		xml, err := volume.Marshal()
-		gomega.Expect(err).To(gomega.BeNil())
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
 		gomega.Expect(xml).To(gomega.ContainSubstring(`<name>xml-test</name>`))
 	})
 
@@ -163,7 +163,7 @@ var _ = ginkgo.Describe("volume marshaling", func() {
 			WithBackingStore("/base.img", "raw")
 
 		xml, err := volume.Marshal()
-		gomega.Expect(err).To(gomega.BeNil())
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
 		gomega.Expect(xml).To(gomega.ContainSubstring("full-volume"))
 		gomega.Expect(xml).To(gomega.ContainSubstring("backingStore"))
 	})

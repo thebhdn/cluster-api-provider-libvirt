@@ -37,7 +37,7 @@ var _ = Describe("DomainState constants", func() {
 
 var _ = Describe("getDomainState", func() {
 	It("panics with nil conn - requires live libvirt", func() {
-		Expect(func() { getDomainState(nil, "nonexistent") }).To(Panic())
+		Expect(func() { _, _ = getDomainState(nil, "nonexistent") }).To(Panic())
 	})
 })
 
@@ -63,7 +63,7 @@ var _ = Describe("DomainState mapping", func() {
 		func(tc mappingCase) {
 			// We can't exercise the full path without a live libvirt connection,
 			// but we verify the constants are well-formed.
-			Expect(tc.expected).ToNot(Equal(""))
+			Expect(tc.expected).ToNot(BeEmpty())
 		},
 		Entry("running", entries[0]),
 		Entry("shutoff", entries[1]),

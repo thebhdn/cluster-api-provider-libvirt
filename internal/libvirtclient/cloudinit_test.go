@@ -34,12 +34,12 @@ var _ = Describe("writeCloudInitISO", func() {
 		It("writes a non-empty ISO to the writer", func() {
 			cfg := MachineConfig{
 				InfraConfig: InfraConfig{
-					Network:    "default",
-					BasePool:   "default",
-					DomainPool: "default",
+					Network:    testNetwork,
+					BasePool:   testPool,
+					DomainPool: testPool,
 					URI:        "qemu+tcp://localhost/system",
 				},
-				DomainName: "test-machine",
+				DomainName: testDomainName,
 				MemoryMiB:  1024,
 				VCPU:       1,
 				DiskSize:   20,
@@ -58,8 +58,8 @@ var _ = Describe("writeCloudInitISO", func() {
 	DescribeTable("handles user-data payloads",
 		func(tc testCase) {
 			cfg := MachineConfig{
-				InfraConfig: InfraConfig{Network: "default"},
-				DomainName:  "test-machine",
+				InfraConfig: InfraConfig{Network: testNetwork},
+				DomainName:  testDomainName,
 				UserData:    tc.userData,
 			}
 
@@ -90,7 +90,7 @@ var _ = Describe("writeCloudInitISO", func() {
 	When("given a valid config", func() {
 		It("produces an ISO at least 10 MiB", func() {
 			cfg := MachineConfig{
-				InfraConfig: InfraConfig{Network: "default"},
+				InfraConfig: InfraConfig{Network: testNetwork},
 				DomainName:  "size-test",
 				UserData:    []byte("test data"),
 			}
@@ -110,7 +110,7 @@ var _ = Describe("writeCloudInitISO", func() {
 	DescribeTable("produces valid ISO for multiple domain names",
 		func(domain string) {
 			cfg := MachineConfig{
-				InfraConfig: InfraConfig{Network: "default"},
+				InfraConfig: InfraConfig{Network: testNetwork},
 				DomainName:  domain,
 				UserData:    []byte("cloud-init data for " + domain),
 			}

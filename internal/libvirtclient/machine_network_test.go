@@ -75,17 +75,17 @@ func testHostEntry(mac, name, ip string) string {
 
 var _ = Describe("deriveDomainMAC", func() {
 	It("is deterministic per domain name", func() {
-		first := deriveDomainMAC("test-machine")
-		second := deriveDomainMAC("test-machine")
+		first := deriveDomainMAC(testDomainName)
+		second := deriveDomainMAC(testDomainName)
 		Expect(first).To(Equal(second))
 	})
 
 	It("uses the libvirt vendor-local prefix", func() {
-		Expect(deriveDomainMAC("test-machine")).To(HavePrefix("52:54:00:"))
+		Expect(deriveDomainMAC(testDomainName)).To(HavePrefix("52:54:00:"))
 	})
 
 	It("is locally administered (U/L bit set)", func() {
-		mac, err := net.ParseMAC(deriveDomainMAC("test-machine"))
+		mac, err := net.ParseMAC(deriveDomainMAC(testDomainName))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mac[0] & 0x02).NotTo(BeZero())
 	})
@@ -105,23 +105,23 @@ var _ = Describe("leaseAddressForMac", func() {
 	It("returns the IP of the lease bound to the MAC", func() {
 		leases := []libvirt.NetworkDHCPLease{
 			{Mac: "aa:bb:cc:dd:ee:00", IPaddr: "192.168.122.10"},
-			{Mac: "52:54:00:aa:bb:cc", IPaddr: "192.168.122.55"},
+			{Mac: testMAC, IPaddr: testMachineIP},
 		}
-		Expect(leaseAddressForMac(leases, "52:54:00:aa:bb:cc")).To(Equal("192.168.122.55"))
+		Expect(leaseAddressForMac(leases, testMAC)).To(Equal(testMachineIP))
 	})
 
 	It("matches case-insensitively", func() {
-		leases := []libvirt.NetworkDHCPLease{{Mac: "52:54:00:aa:bb:cc", IPaddr: "192.168.122.55"}}
-		Expect(leaseAddressForMac(leases, "52:54:00:AA:BB:CC")).To(Equal("192.168.122.55"))
+		leases := []libvirt.NetworkDHCPLease{{Mac: testMAC, IPaddr: testMachineIP}}
+		Expect(leaseAddressForMac(leases, "52:54:00:AA:BB:CC")).To(Equal(testMachineIP))
 	})
 
 	It("returns empty when no lease matches", func() {
 		leases := []libvirt.NetworkDHCPLease{{Mac: "aa:bb:cc:dd:ee:00", IPaddr: "192.168.122.10"}}
-		Expect(leaseAddressForMac(leases, "52:54:00:aa:bb:cc")).To(BeEmpty())
+		Expect(leaseAddressForMac(leases, testMAC)).To(BeEmpty())
 	})
 
 	It("returns empty when there are no leases", func() {
-		Expect(leaseAddressForMac(nil, "52:54:00:aa:bb:cc")).To(BeEmpty())
+		Expect(leaseAddressForMac(nil, testMAC)).To(BeEmpty())
 	})
 })
 
@@ -167,7 +167,7 @@ var _ = Describe("allocationCandidates", func() {
 			candidates, err := allocationCandidates(network)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(candidates).To(HaveLen(machineReservationBlockSize))
-			Expect(candidates[0]).To(Equal(parseIPNum("192.168.122.55")))
+			Expect(candidates[0]).To(Equal(parseIPNum(testMachineIP)))
 			Expect(candidates[len(candidates)-1]).To(Equal(parseIPNum("192.168.122.254")))
 		})
 	})
@@ -266,11 +266,11 @@ var _ = Describe("allocateMachineIPIn", func() {
 
 var _ = Describe("machineHostXML", func() {
 	It("marshals the host entry attributes", func() {
-		xml, err := machineHostXML("machine-a", "52:54:00:aa:bb:cc", "192.168.122.55")
+		xml, err := machineHostXML("machine-a", testMAC, testMachineIP)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(xml).To(ContainSubstring(`mac="52:54:00:aa:bb:cc"`))
+		Expect(xml).To(ContainSubstring(`mac="` + testMAC + `"`))
 		Expect(xml).To(ContainSubstring(`name="machine-a"`))
-		Expect(xml).To(ContainSubstring(`ip="192.168.122.55"`))
+		Expect(xml).To(ContainSubstring(`ip="` + testMachineIP + `"`))
 	})
 })
 
@@ -374,7 +374,7 @@ var _ = Describe("releaseMachineIP", func() {
 		It("issues exactly one DELETE update", func() {
 			mac := deriveDomainMAC(domainName)
 			fake := &fakeNetworkOps{
-				xml: testNetworkXML("255.255.255.0", "", "", testHostEntry(mac, domainName, "192.168.122.55")),
+				xml: testNetworkXML("255.255.255.0", "", "", testHostEntry(mac, domainName, testMachineIP)),
 			}
 
 			Expect(releaseMachineIP(fake, "testnet", domainName, mac)).To(Succeed())
@@ -400,19 +400,19 @@ var _ = Describe("machineAddress", func() {
 	It("returns the lease IP for the MAC", func() {
 		fake := &fakeNetworkOps{
 			leases: []libvirt.NetworkDHCPLease{
-				{Mac: "52:54:00:aa:bb:cc", IPaddr: "192.168.122.55"},
+				{Mac: testMAC, IPaddr: testMachineIP},
 			},
 		}
 
-		address, err := machineAddress(fake, "testnet", "52:54:00:aa:bb:cc")
+		address, err := machineAddress(fake, "testnet", testMAC)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(address).To(Equal("192.168.122.55"))
+		Expect(address).To(Equal(testMachineIP))
 	})
 
 	It("returns empty when there is no lease yet", func() {
 		fake := &fakeNetworkOps{}
 
-		address, err := machineAddress(fake, "testnet", "52:54:00:aa:bb:cc")
+		address, err := machineAddress(fake, "testnet", testMAC)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(address).To(BeEmpty())
 	})
@@ -421,7 +421,7 @@ var _ = Describe("machineAddress", func() {
 		It("returns the error", func() {
 			fake := &fakeNetworkOps{leasesErr: fmt.Errorf("dhcp: not yet started")}
 
-			_, err := machineAddress(fake, "testnet", "52:54:00:aa:bb:cc")
+			_, err := machineAddress(fake, "testnet", testMAC)
 			Expect(err).To(HaveOccurred())
 		})
 	})

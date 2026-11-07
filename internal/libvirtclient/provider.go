@@ -136,7 +136,7 @@ func (p *Provider) GetMachineAddress(cfg MachineConfig) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("lookup network %s: %w", cfg.Network, err)
 	}
-	defer network.Free() //nolint:errcheck
+	defer network.Free()
 
 	return machineAddress(network, cfg.Network, deriveDomainMAC(cfg.domainName()))
 }
@@ -149,7 +149,7 @@ func (p *Provider) releaseMachineReservation(conn *libvirt.Connect, cfg MachineC
 		}
 		return fmt.Errorf("lookup network %s: %w", cfg.Network, err)
 	}
-	defer network.Free() //nolint:errcheck
+	defer network.Free()
 
 	return releaseMachineIP(network, cfg.Network, cfg.domainName(), deriveDomainMAC(cfg.domainName()))
 }

@@ -35,11 +35,10 @@ var _ = Describe("FirstHostAndPrefix", func() {
 		}
 
 		for _, entry := range entries {
-			entry := entry
 			It("returns the first usable host and prefix for "+entry.cidr, func() {
 				host, prefix, err := FirstHostAndPrefix(entry.cidr)
 
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(host).To(Equal(entry.host))
 				Expect(prefix).To(Equal(entry.prefix))
 			})
@@ -50,19 +49,19 @@ var _ = Describe("FirstHostAndPrefix", func() {
 		It("returns an error for a non-CIDR string", func() {
 			_, _, err := FirstHostAndPrefix("not-a-cidr")
 
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("returns an error for an IPv6 CIDR", func() {
 			_, _, err := FirstHostAndPrefix("fd00::/64")
 
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("returns an error for a /32 with no usable hosts", func() {
 			_, _, err := FirstHostAndPrefix("10.0.0.1/32")
 
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 	})
 })
