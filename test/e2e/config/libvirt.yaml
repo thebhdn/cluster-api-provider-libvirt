@@ -1,0 +1,86 @@
+# E2E config for cluster-api-provider-libvirt.
+# Format: https://pkg.go.dev/sigs.k8s.io/cluster-api/test/framework/clusterctl#E2EConfig
+# Relative paths are relative to this file. Every variable can be overridden with an env var.
+
+managementClusterName: caplv-e2e
+
+images:
+# Built by `make test-e2e` and loaded into the kind management cluster.
+- name: cluster-api-provider-libvirt:e2e
+  loadBehavior: mustLoad
+
+providers:
+- name: cluster-api
+  type: CoreProvider
+  versions:
+  - name: v1.13.2
+    value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/core-components.yaml
+    type: url
+    contract: v1beta2
+    files:
+    - sourcePath: ../data/shared/capi/metadata.yaml
+
+- name: kubeadm
+  type: BootstrapProvider
+  versions:
+  - name: v1.13.2
+    value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/bootstrap-components.yaml
+    type: url
+    contract: v1beta2
+    files:
+    - sourcePath: ../data/shared/capi/metadata.yaml
+
+- name: kubeadm
+  type: ControlPlaneProvider
+  versions:
+  - name: v1.13.2
+    value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/control-plane-components.yaml
+    type: url
+    contract: v1beta2
+    files:
+    - sourcePath: ../data/shared/capi/metadata.yaml
+
+- name: libvirt
+  type: InfrastructureProvider
+  versions:
+  # Built from source; the version must be in a release series of metadata.yaml.
+  - name: v0.1.99
+    value: ../../../config/release
+    type: kustomize
+    contract: v1beta2
+    replacements:
+    - old: "image: controller:latest"
+      new: "image: cluster-api-provider-libvirt:e2e"
+    files:
+    - sourcePath: ../../../metadata.yaml
+    # Built by `make e2e-templates` from ../data/infrastructure-libvirt/main.
+    - sourcePath: ../../../out/e2e/cluster-template.yaml
+
+variables:
+  # Kind node version for the management cluster.
+  KUBERNETES_VERSION_MANAGEMENT: "v1.36.0"
+  # Must match the kubeadm, kubelet and containerd versions in LIBVIRT_IMAGE.
+  KUBERNETES_VERSION: "v1.34.1"
+  CNI: "../data/cni/kindnet/kindnet.yaml"
+  EXP_CLUSTER_RESOURCE_SET: "true"
+
+  # Required, set them as env vars. See docs/development.md.
+  # libvirt URI as seen from the kind management cluster.
+  LIBVIRT_URI: ""
+  LIBVIRT_IMAGE: ""
+  CONTROL_PLANE_ENDPOINT_IP: ""
+
+  # libvirt URI as seen from the test process, for the leftover check. Empty means LIBVIRT_URI.
+  LIBVIRT_HOST_URI: ""
+  LIBVIRT_NETWORK: "default"
+  LIBVIRT_BASE_POOL: "capi-base-images"
+  LIBVIRT_DOMAIN_POOL: "capi-vm-disks"
+  CONTROL_PLANE_MACHINE_MEMORY_MIB: "4096"
+  WORKER_MACHINE_MEMORY_MIB: "2048"
+
+intervals:
+  default/wait-controllers: ["5m", "10s"]
+  default/wait-cluster: ["5m", "10s"]
+  default/wait-control-plane: ["20m", "10s"]
+  default/wait-worker-nodes: ["15m", "10s"]
+  default/wait-delete-cluster: ["10m", "10s"]
