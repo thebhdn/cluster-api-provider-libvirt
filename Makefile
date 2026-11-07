@@ -69,36 +69,25 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# kubectl kuberc is disabled by default for test isolation; enable with:
-# - KUBECTL_KUBERC=true
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= cluster-api-provider-libvirt-test-e2e
+# E2E_IMG must match the image in E2E_CONFIG.
+E2E_IMG ?= cluster-api-provider-libvirt:e2e
+E2E_CONFIG ?= $(CURDIR)/test/e2e/config/libvirt.yaml
+E2E_TEMPLATES_DIR = $(OUT_DIR)/e2e
+E2E_ARTIFACTS ?= $(OUT_DIR)/e2e/artifacts
+E2E_TIMEOUT ?= 3h
+# Extra suite flags, for example -e2e.skip-resource-cleanup or -e2e.use-existing-cluster.
+E2E_ARGS ?=
 
-.PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
-	@command -v $(KIND) >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@case "$$($(KIND) get clusters)" in \
-		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
-		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
-	esac
+.PHONY: e2e-templates
+e2e-templates: kustomize ## Build the e2e cluster template (default template plus the CNI ClusterResourceSet).
+	mkdir -p "$(E2E_TEMPLATES_DIR)"
+	"$(KUSTOMIZE)" build --load-restrictor LoadRestrictionsNone test/e2e/data/infrastructure-libvirt/main > "$(E2E_TEMPLATES_DIR)/cluster-template.yaml"
 
 .PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-	$(MAKE) cleanup-test-e2e
-
-.PHONY: cleanup-test-e2e
-cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
-	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+test-e2e: manifests kustomize e2e-templates ## Run the e2e tests against a libvirt host, see docs/development.md.
+	$(MAKE) docker-build IMG=$(E2E_IMG)
+	CAPI_KUSTOMIZE_PATH="$(KUSTOMIZE)" go test -tags=e2e ./test/e2e/ -v -timeout $(E2E_TIMEOUT) -args \
+		-ginkgo.v -e2e.config="$(E2E_CONFIG)" -e2e.artifacts-folder="$(E2E_ARTIFACTS)" $(E2E_ARGS)
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -229,7 +218,6 @@ $(LOCALBIN):
 
 ## Tool Binaries
 KUBECTL ?= kubectl
-KIND ?= kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest

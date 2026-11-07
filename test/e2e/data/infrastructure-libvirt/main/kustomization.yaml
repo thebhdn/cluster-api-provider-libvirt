@@ -1,0 +1,9 @@
+# E2E cluster template: the default template plus a ClusterResourceSet that installs the CNI.
+# Build with `make e2e-templates`, it needs --load-restrictor LoadRestrictionsNone.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../../../../templates/cluster-template.yaml
+- crs.yaml
+patches:
+- path: cluster-cni-label.yaml

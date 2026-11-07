@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 /*
 Copyright 2026 Bohdan Leshchenko.
@@ -20,100 +19,152 @@ limitations under the License.
 package e2e
 
 import (
-	"fmt"
+	"context"
+	"flag"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/runtime"
+	capie2e "sigs.k8s.io/cluster-api/test/e2e"
+	"sigs.k8s.io/cluster-api/test/framework"
+	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
+	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
+	"sigs.k8s.io/cluster-api/test/framework/ginkgoextensions"
+	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/thebhdn/cluster-api-provider-libvirt/test/utils"
+	infrav1 "github.com/thebhdn/cluster-api-provider-libvirt/api/v1alpha1"
+)
+
+const (
+	bootstrapClusterName = "bootstrap"
+	kindIPFamily         = "IPv4"
+	ginkgoLogFile        = "ginkgo-log.txt"
+	repositoryFolderName = "repository"
 )
 
 var (
-	// managerImage is the manager image to be built and loaded for testing.
-	managerImage = "example.com/cluster-api-provider-libvirt:v0.0.1"
-	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
-	shouldCleanupCertManager = false
+	configPath         string
+	artifactFolder     string
+	useExistingCluster bool
+	skipCleanup        bool
 )
 
-// TestE2E runs the e2e test suite to validate the solution in an isolated environment.
-// The default setup requires Kind and CertManager.
-//
-// To enable kubectl kuberc (use custom kubectl configurations), set: KUBECTL_KUBERC=true
-// By default, kuberc is disabled to ensure consistent test behavior across different environments.
-// To skip CertManager installation, set: CERT_MANAGER_INSTALL_SKIP=true
+var (
+	ctx                       = ctrl.SetupSignalHandler()
+	watchesCtx, cancelWatches = context.WithCancel(ctx)
+
+	e2eConfig                *clusterctl.E2EConfig
+	clusterctlConfigPath     string
+	bootstrapClusterProvider bootstrap.ClusterProvider
+	bootstrapClusterProxy    framework.ClusterProxy
+)
+
+func init() {
+	flag.StringVar(&configPath, "e2e.config", "", "path to the e2e config file")
+	flag.StringVar(&artifactFolder, "e2e.artifacts-folder", "", "folder for test artifacts (logs, resource dumps)")
+	flag.BoolVar(&useExistingCluster, "e2e.use-existing-cluster", false,
+		"use the current kubeconfig cluster instead of creating a kind cluster")
+	flag.BoolVar(&skipCleanup, "e2e.skip-resource-cleanup", false,
+		"keep the workload cluster and the kind cluster after the tests")
+}
+
 func TestE2E(t *testing.T) {
+	g := NewWithT(t)
+	ctrl.SetLogger(GinkgoLogr)
+
+	g.Expect(os.MkdirAll(artifactFolder, 0o750)).To(Succeed(), "cannot create e2e.artifacts-folder %q", artifactFolder)
+
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting cluster-api-provider-libvirt e2e test suite\n")
-	RunSpecs(t, "e2e suite")
+
+	w, err := ginkgoextensions.EnableFileLogging(filepath.Join(artifactFolder, ginkgoLogFile))
+	g.Expect(err).ToNot(HaveOccurred())
+	defer func() { _ = w.Close() }()
+
+	RunSpecs(t, "caplv-e2e")
 }
 
 var _ = BeforeSuite(func() {
-	By("building the manager image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
-	_, err := utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
+	Expect(configPath).To(BeAnExistingFile(), "e2e.config must be an existing file")
 
-	// TODO(user): If you want to change the e2e test vendor from Kind,
-	// ensure the image is built and available, then remove the following block.
-	By("loading the manager image on Kind")
-	err = utils.LoadImageToKindClusterWithName(managerImage)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
+	By("Loading the e2e config")
+	e2eConfig = clusterctl.LoadE2EConfig(ctx, clusterctl.LoadE2EConfigInput{ConfigPath: configPath})
+	Expect(e2eConfig).ToNot(BeNil(), "failed to load the e2e config from %s", configPath)
+	for _, name := range requiredVariables {
+		Expect(e2eConfig.GetVariableOrEmpty(name)).ToNot(BeEmpty(), "set the %s env var, see docs/development.md", name)
+	}
 
-	configureKubectlKubeRC()
-	setupCertManager()
+	By("Creating a local clusterctl repository")
+	clusterctlConfigPath = createClusterctlRepository(filepath.Join(artifactFolder, repositoryFolderName))
+
+	By("Setting up the bootstrap cluster")
+	bootstrapClusterProvider, bootstrapClusterProxy = setupBootstrapCluster()
+
+	By("Installing the providers")
+	initInput := clusterctl.InitManagementClusterAndWatchControllerLogsInput{
+		ClusterProxy:            bootstrapClusterProxy,
+		ClusterctlConfigPath:    clusterctlConfigPath,
+		InfrastructureProviders: e2eConfig.InfrastructureProviders(),
+		LogFolder:               filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName()),
+	}
+	clusterctl.InitManagementClusterAndWatchControllerLogs(watchesCtx, initInput,
+		e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 })
 
 var _ = AfterSuite(func() {
-	teardownCertManager()
+	if skipCleanup {
+		return
+	}
+	By("Tearing down the bootstrap cluster")
+	cancelWatches()
+	if bootstrapClusterProxy != nil {
+		bootstrapClusterProxy.Dispose(ctx)
+	}
+	if bootstrapClusterProvider != nil {
+		bootstrapClusterProvider.Dispose(ctx)
+	}
 })
 
-// Disable kubectl kuberc by default for test isolation.
-// This prevents local kubectl configurations from affecting test behavior.
-// To enable kuberc, set: KUBECTL_KUBERC=true
-func configureKubectlKubeRC() {
-	if os.Getenv("KUBECTL_KUBERC") != "true" {
-		By("disabling kubectl kuberc for test isolation")
-		err := os.Setenv("KUBECTL_KUBERC", "false")
-		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to disable kubectl kuberc")
-		_, _ = fmt.Fprintf(GinkgoWriter,
-			"kubectl kuberc disabled for consistent test behavior (override with KUBECTL_KUBERC=true)\n")
-	} else {
-		_, _ = fmt.Fprintf(GinkgoWriter, "kubectl kuberc enabled (KUBECTL_KUBERC=true)\n")
-	}
+func initScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	framework.TryAddDefaultSchemes(scheme)
+	Expect(infrav1.AddToScheme(scheme)).To(Succeed())
+	return scheme
 }
 
-// setupCertManager installs CertManager if needed for webhook tests.
-// Skips installation if CERT_MANAGER_INSTALL_SKIP=true or if already present.
-func setupCertManager() {
-	if os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true" {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping CertManager installation (CERT_MANAGER_INSTALL_SKIP=true)\n")
-		return
+func createClusterctlRepository(folder string) string {
+	input := clusterctl.CreateRepositoryInput{
+		E2EConfig:        e2eConfig,
+		RepositoryFolder: folder,
 	}
+	cniPath := e2eConfig.MustGetVariable(capie2e.CNIPath)
+	Expect(cniPath).To(BeAnExistingFile(), "the %s variable must point to an existing file", capie2e.CNIPath)
+	input.RegisterClusterResourceSetConfigMapTransformation(cniPath, capie2e.CNIResources)
 
-	By("checking if CertManager is already installed")
-	if utils.IsCertManagerCRDsInstalled() {
-		_, _ = fmt.Fprintf(GinkgoWriter, "CertManager is already installed. Skipping installation.\n")
-		return
-	}
-
-	// Mark for cleanup before installation to handle interruptions and partial installs.
-	shouldCleanupCertManager = true
-
-	By("installing CertManager")
-	Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
+	path := clusterctl.CreateRepository(ctx, input)
+	Expect(path).To(BeAnExistingFile(), "the clusterctl config is missing in %s", folder)
+	return path
 }
 
-// teardownCertManager uninstalls CertManager if it was installed by setupCertManager.
-// This ensures we only remove what we installed.
-func teardownCertManager() {
-	if !shouldCleanupCertManager {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping CertManager cleanup (not installed by this suite)\n")
-		return
+func setupBootstrapCluster() (bootstrap.ClusterProvider, framework.ClusterProxy) {
+	var provider bootstrap.ClusterProvider
+	kubeconfigPath := ""
+	if !useExistingCluster {
+		kindInput := bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
+			Name:              e2eConfig.ManagementClusterName,
+			KubernetesVersion: e2eConfig.MustGetVariable(capie2e.KubernetesVersionManagement),
+			Images:            e2eConfig.Images,
+			IPFamily:          kindIPFamily,
+			LogFolder:         filepath.Join(artifactFolder, "kind"),
+		}
+		provider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, kindInput)
+		Expect(provider).ToNot(BeNil(), "failed to create the kind bootstrap cluster")
+		kubeconfigPath = provider.GetKubeconfigPath()
 	}
 
-	By("uninstalling CertManager")
-	utils.UninstallCertManager()
+	proxy := framework.NewClusterProxy(bootstrapClusterName, kubeconfigPath, initScheme())
+	Expect(proxy).ToNot(BeNil(), "failed to create the bootstrap cluster proxy")
+	return provider, proxy
 }
